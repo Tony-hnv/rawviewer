@@ -3,6 +3,9 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(rawviewer)
 
+# 使用 c++_shared STL（LibRaw 需要 C++ 标准库）
+set(CMAKE_ANDROID_STL c++_shared)
+
 # LibRaw 源码根（Android CMake 中 CMAKE_SOURCE_DIR = app/src/main/cpp）
 set(LIBRAW_ROOT "${CMAKE_SOURCE_DIR}/../../libraw" CACHE PATH "LibRaw source root")
 
