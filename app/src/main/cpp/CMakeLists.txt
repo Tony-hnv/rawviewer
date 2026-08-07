@@ -6,13 +6,26 @@ project(rawviewer)
 # 使用 c++_shared STL（LibRaw 需要 C++ 标准库）
 set(CMAKE_ANDROID_STL c++_shared)
 
-# LibRaw 源码根：相对本 CMakeLists 所在目录 (app/src/main/cpp) -> app/libraw
-set(LIBRAW_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../libraw")
-
-if(NOT EXISTS "${LIBRAW_ROOT}/libraw/libraw.h")
-    message(FATAL_ERROR "LibRaw source not found at ${LIBRAW_ROOT}. "
+# LibRaw 源码根：尝试多个候选路径（适配不同 workdir/checkout 行为）
+set(CANDIDATE_ROOTS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../libraw"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../libraw"
+    "${CMAKE_SOURCE_DIR}/../../libraw"
+    "${CMAKE_SOURCE_DIR}/libraw"
+    "${CMAKE_HOME_DIRECTORY}/../libraw"
+)
+set(LIBRAW_ROOT "")
+foreach(root IN LISTS CANDIDATE_ROOTS)
+    if(EXISTS "${root}/libraw/libraw.h" OR EXISTS "${root}/src/libraw_datastream.cpp")
+        set(LIBRAW_ROOT "${root}")
+        break()
+    endif()
+endforeach()
+if(NOT LIBRAW_ROOT)
+    message(FATAL_ERROR "LibRaw source not found. Tried: ${CANDIDATE_ROOTS}. "
         "Run: git clone --depth 1 https://github.com/LibRaw/LibRaw.git app/libraw")
 endif()
+message(STATUS "Using LibRaw at: ${LIBRAW_ROOT}")
 
 # LibRaw 需要 dng sdk（内嵌在 LibRaw 源码树里）
 set(LIBRAW_DNG "${LIBRAW_ROOT}/internal/dngsdk")
