@@ -1,34 +1,49 @@
 // JNI 桥：将 LibRaw 解码结果转为 Android Bitmap。
 // 链接 libraw（见 CMakeLists.txt 与 docs/BUILD_LIBRAW.md）。
-// 所有 JNI 入口用 extern "C" + try/catch 守护，任何异常返回 null 而非崩溃。
+// 所有 JNI 入口用 extern "C" + try/catch 守护。原生 SIGSEGV 无法用 C++ 异常捕获，
+// 因此本文件采用保守参数 + 严密越界校验，尽量避免野指针。
 #include <jni.h>
 #include <android/bitmap.h>
+#include <android/log.h>
 #include <string>
 #include <vector>
 #include <cstring>
 #include <cstdlib>
 #include <libraw/libraw.h>
 
+#define LOG_TAG "RAWViewer"
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
+
 using namespace std;
 
-// ---------- 像素拷贝辅助 ----------
-// 把 libraw RGB(A) 数据采样缩放到 (tw,th)，写入 ARGB_8888 像素缓冲 dst（RGBA 每像素 4 字节，小端 = B,G,R,A）
-static void downsample_rgb_to_argb(
+// spp: 3=RGB8, 4=RGBA8, 6=RGB16(每通道2字节小端), 8=RGBA16
+// 统一转 ARGB_8888（dst 每像素 4 字节，内存序 B,G,R,A）
+static void downsample_to_argb(
     const uint8_t *src, int sw, int sh, int spp,
-    uint8_t *dst, int tw, int th) {
+    uint8_t *dst, int tw, int th, size_t dataSize) {
 
-    // spp: 源每像素字节数（3=RGB，4=RGBA）
+    const bool is16 = (spp == 6 || spp == 8);
     for (int y = 0; y < th; ++y) {
-        int sy = (int)(((long long)y * sh) / th);
-        if (sy >= sh) sy = sh - 1;
+        long long syLL = ((long long)y * sh) / th;
+        int sy = (syLL >= sh) ? sh - 1 : (int)syLL;
         const uint8_t *row = src + (size_t)sy * sw * spp;
         uint8_t *drow = dst + (size_t)y * tw * 4;
+        // 校验行边界，防越界
+        size_t rowByte = (size_t)sy * sw * spp;
+        if (rowByte + (size_t)sw * spp > dataSize) break;
         for (int x = 0; x < tw; ++x) {
-            int sx = (int)(((long long)x * sw) / tw);
-            if (sx >= sw) sx = sw - 1;
+            long long sxLL = ((long long)x * sw) / tw;
+            int sx = (sxLL >= sw) ? sw - 1 : (int)sxLL;
             const uint8_t *p = row + (size_t)sx * spp;
-            uint8_t r = p[0], g = p[1], b = p[2], a = 0xFF;
-            if (spp >= 4) a = p[3];
+            uint8_t r, g, b, a = 0xFF;
+            if (is16) {
+                r = p[1]; g = p[3]; b = p[5];
+                if (spp == 8) a = p[7];
+            } else {
+                r = p[0]; g = p[1]; b = p[2];
+                if (spp == 4) a = p[3];
+            }
             drow[(size_t)x * 4 + 0] = b;
             drow[(size_t)x * 4 + 1] = g;
             drow[(size_t)x * 4 + 2] = r;
@@ -68,6 +83,44 @@ static void rotate_argb(uint8_t *data, int &w, int &h, int rotation) {
     }
 }
 
+// 写一个 Bitmap 预分配的 ARGB_8888，返回 jobject 或 null
+static jobject write_argb_bitmap(JNIEnv *env, uint8_t *argb, int w, int h) {
+    try {
+        jclass bmpCls = env->FindClass("android/graphics/Bitmap");
+        if (!bmpCls) return nullptr;
+        jmethodID create = env->GetStaticMethodID(bmpCls, "createBitmap",
+            "(IILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;");
+        if (!create) return nullptr;
+        jclass cfgCls = env->FindClass("android/graphics/Bitmap$Config");
+        if (!cfgCls) return nullptr;
+        jfieldID argb8888 = env->GetStaticFieldID(cfgCls, "ARGB_8888",
+            "Landroid/graphics/Bitmap$Config;");
+        if (!argb8888) return nullptr;
+        jobject cfg = env->GetStaticObjectField(cfgCls, argb8888);
+        jobject bitmap = env->CallStaticObjectMethod(bmpCls, create, w, h, cfg);
+        if (!bitmap) return nullptr;
+
+        void *pixels = nullptr;
+        AndroidBitmapInfo info;
+        if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
+            env->DeleteLocalRef(bitmap); return nullptr;
+        }
+        if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) {
+            env->DeleteLocalRef(bitmap); return nullptr;
+        }
+        if (pixels) {
+            uint8_t *dp = (uint8_t*)pixels;
+            for (int y = 0; y < h; ++y) {
+                memcpy(dp + (size_t)y * info.stride, argb + (size_t)y * w * 4, (size_t)w * 4);
+            }
+        }
+        AndroidBitmap_unlockPixels(env, bitmap);
+        return bitmap;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
 // ---------- 解码主入口 ----------
 extern "C" JNIEXPORT jobject JNICALL
 Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
@@ -80,36 +133,49 @@ Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
         env->ReleaseStringUTFChars(jPath, cpath);
 
         LibRaw raw;
-        int rc;
-        rc = raw.open_file(path.c_str());
-        if (rc != LIBRAW_SUCCESS) return nullptr;
+        // 关键：强制 8-bit 输出，避免默认 16-bit 导致 data 每像素 6/8 字节
+        raw.imgdata.params.output_bps = 8;
+        raw.imgdata.params.output_color = 1;   // sRGB
+        raw.imgdata.params.user_qual = 0;       // 高质 demosaic
+        raw.imgdata.params.half_size = 0;
+        raw.imgdata.params.no_auto_bright = 0;
+        raw.imgdata.params.gamm[0] = 1.0;
+        raw.imgdata.params.gamm[1] = 1.0;
+
+        int rc = raw.open_file(path.c_str());
+        if (rc != LIBRAW_SUCCESS) { LOGE("open_file failed rc=%d", rc); return nullptr; }
+        LOGI("opened: %d x %d colors=%d", raw.imgdata.sizes.width,
+             raw.imgdata.sizes.height, raw.imgdata.idata.colors);
+
         rc = raw.unpack();
-        if (rc != LIBRAW_SUCCESS) { raw.recycle(); return nullptr; }
+        if (rc != LIBRAW_SUCCESS) { LOGE("unpack failed rc=%d", rc); raw.recycle(); return nullptr; }
+        LOGI("unpack ok");
+
         rc = raw.dcraw_process();
-        if (rc != LIBRAW_SUCCESS) { raw.recycle(); return nullptr; }
+        if (rc != LIBRAW_SUCCESS) { LOGE("dcraw_process failed rc=%d", rc); raw.recycle(); return nullptr; }
+        LOGI("dcraw_process ok");
 
         libraw_processed_image_t *img = raw.dcraw_make_mem_image();
         raw.recycle();
-        if (!img) return nullptr;
+        if (!img) { LOGE("dcraw_make_mem_image null"); return nullptr; }
 
         int w = img->width, h = img->height;
-        // 每像素字节数：优先根据 data_size 反推，兜底看 colors
-        // （某些配置下 colors 标记可能与实际输出布局不一致，反推更稳）
-        int spp = 3;
-        if (w > 0 && h > 0 && img->data_size > 0) {
-            int per = (int)(img->data_size / ((size_t)w * h));
-            if (per == 4 || per == 3) spp = per;
-            else if (img->colors == 3) spp = 3; else spp = 4;
-        } else if (img->colors == 3) {
-            spp = 3;
-        } else {
-            spp = 4;
-        }
         if (w <= 0 || h <= 0 || img->data_size <= 0) {
+            LOGE("bad dims w=%d h=%d size=%u", w, h, img->data_size);
             free(img->data); free(img); return nullptr;
         }
 
-        // 目标尺寸：最长边限制，默认上限更保守，避免超大内存
+        // 确定每像素字节数：优先反推，并兼容 3/4/6/8
+        int spp = 3;
+        size_t perPix = img->data_size / ((size_t)w * h);
+        if (perPix == 4) spp = 4;
+        else if (perPix == 6) spp = 6;
+        else if (perPix == 8) spp = 8;
+        else spp = 3;
+        LOGI("img: w=%d h=%d data_size=%u spp=%d colors=%d", w, h,
+             img->data_size, spp, img->colors);
+
+        // 目标尺寸：最长边限制（默认 2048，避免超大内存与耗时）
         int cap = (maxDim > 0 && maxDim < 4096) ? maxDim : 2048;
         int tw = w, th = h;
         if (w >= h) { if (w > cap) { th = (int)((long long)h * cap / w); tw = cap; } }
@@ -117,51 +183,17 @@ Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
         if (tw < 1) tw = 1;
         if (th < 1) th = 1;
 
-        // 输出缓冲（ARGB_8888）
         size_t pix = (size_t)tw * th;
         vector<uint8_t> argb(pix * 4);
-        downsample_rgb_to_argb(img->data, w, h, spp, argb.data(), tw, th);
+        downsample_to_argb(img->data, w, h, spp, argb.data(), tw, th, img->data_size);
         free(img->data);
         free(img);
 
-        // 旋转
         if (rotation != 0) rotate_argb(argb.data(), tw, th, (int)rotation);
 
-        // 用 AndroidBitmap API 直接创建 ARGB_8888 Bitmap 并拷入像素
-        jclass bmpCls = env->FindClass("android/graphics/Bitmap");
-        if (!bmpCls) return nullptr;
-        jmethodID create = env->GetStaticMethodID(bmpCls, "createBitmap",
-            "(IILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;");
-        if (!create) return nullptr;
-        jclass cfgCls = env->FindClass("android/graphics/Bitmap$Config");
-        if (!cfgCls) return nullptr;
-        jfieldID argb8888 = env->GetStaticFieldID(cfgCls, "ARGB_8888",
-            "Landroid/graphics/Bitmap$Config;");
-        if (!argb8888) return nullptr;
-        jobject cfg = env->GetStaticObjectField(cfgCls, argb8888);
-        jobject bitmap = env->CallStaticObjectMethod(bmpCls, create, tw, th, cfg);
-        if (!bitmap) return nullptr;
-
-        // 锁定像素写入
-        void *pixels = nullptr;
-        AndroidBitmapInfo info;
-        if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) {
-            env->DeleteLocalRef(bitmap); return nullptr;
-        }
-        if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) {
-            env->DeleteLocalRef(bitmap); return nullptr;
-        }
-        if (pixels) {
-            // info.stride 可能 != width*4，逐行拷贝
-            uint8_t *dp = (uint8_t*)pixels;
-            for (int y = 0; y < th; ++y) {
-                memcpy(dp + (size_t)y * info.stride,
-                       argb.data() + (size_t)y * tw * 4, (size_t)tw * 4);
-            }
-        }
-        AndroidBitmap_unlockPixels(env, bitmap);
-        return bitmap;
+        return write_argb_bitmap(env, argb.data(), tw, th);
     } catch (...) {
+        LOGE("decodeNative C++ exception");
         return nullptr;
     }
 }
