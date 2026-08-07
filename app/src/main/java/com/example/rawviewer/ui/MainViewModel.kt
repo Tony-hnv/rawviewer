@@ -86,7 +86,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun _refreshPreprocessed(redecode: Boolean) {
         val entry = _state.value.selected ?: return
-        if (recdecode) {
+        if (redecode) {
             decodeCurrent()
             return
         }
