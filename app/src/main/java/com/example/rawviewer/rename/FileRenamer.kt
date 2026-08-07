@@ -1,6 +1,9 @@
 package com.example.rawviewer.rename
 
+import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
+import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.text.SimpleDateFormat
@@ -60,5 +63,39 @@ object FileRenamer {
             n++
         }
         return if (file.renameTo(candidate)) candidate.name else null
+    }
+
+    /**
+     * 通过 MediaStore 重命名（兼容 Android 10+ scoped storage）。
+     * @param context 上下文
+     * @param uri     此文件对应的 MediaStore content URI
+     * @param newBaseName 新文件名（不含扩展名）
+     * @return 新文件名；失败返回 null
+     */
+    fun renameViaMediaStore(context: Context, uri: Uri, file: File,
+                            newBaseName: String): String? {
+        return try {
+            val ext = file.extension.ifBlank { "jpg" }
+            val newName = ensureUniqueName(file.parent, "$newBaseName.$ext", file.name)
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, newName)
+            }
+            val rows = context.contentResolver.update(uri, values, null, null)
+            if (rows > 0) newName else null
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    private fun ensureUniqueName(dir: String?, base: String, exclude: String): String {
+        if (dir == null) return base
+        val name = File(base).nameWithoutExtension
+        val ext = File(base).extension
+        var candidate = "$name.$ext"
+        var n = 1
+        while (File(dir, candidate).exists() && candidate != exclude) {
+            candidate = "${name}_$n.$ext"; n++
+        }
+        return candidate
     }
 }
