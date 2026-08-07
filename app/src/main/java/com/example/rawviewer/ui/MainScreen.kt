@@ -27,6 +27,11 @@ fun MainScreen(viewModel: MainViewModel) {
     var showBulkRename by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // 进入界面即触发一次扫描（防止依赖 onResume 时序导致空白）
+    LaunchedEffect(Unit) {
+        viewModel.loadImages()
+    }
+
     LaunchedEffect(state.message) {
         state.message?.let { m ->
             snackbarHostState.showSnackbar(m)
