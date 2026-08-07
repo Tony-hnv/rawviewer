@@ -10,6 +10,9 @@ import android.graphics.Bitmap
  */
 object LibRawBridge {
 
+    @Volatile
+    private var _loaded = false
+
     init {
         // 只尝试加载，失败不抛异常（app 可降级）。
         try {
@@ -19,9 +22,6 @@ object LibRawBridge {
             _loaded = false
         }
     }
-
-    @Volatile
-    private var _loaded = false
 
     fun isAvailable(): Boolean = _loaded
 
