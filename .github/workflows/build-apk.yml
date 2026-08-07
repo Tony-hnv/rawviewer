@@ -15,8 +15,10 @@ jobs:
       - name: Clone LibRaw source (option A1)
         run: |
           git clone --depth 1 https://github.com/LibRaw/LibRaw.git app/libraw
-          echo "LibRaw cloned:"
-          ls app/libraw | head
+          echo "--- LibRaw cloned, verifying ---"
+          ls -la app/libraw | head
+          echo "--- checking libraw.h ---"
+          ls -la app/libraw/libraw/libraw.h app/libraw/src/libraw_datastream.cpp 2>&1 || true
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
