@@ -154,9 +154,9 @@ private fun PreviewPane(
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-        } else if (state.decodedBitmap != null) {
+        } else if (state.previewBitmap != null) {
             Image(
-                bitmap = state.decodedBitmap.asImageBitmap(),
+                bitmap = state.previewBitmap.asImageBitmap(),
                 contentDescription = state.selected?.name,
                 modifier = Modifier
                     .fillMaxWidth()
