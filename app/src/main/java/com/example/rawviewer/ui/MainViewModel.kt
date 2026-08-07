@@ -147,7 +147,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 contrast = _state.value.contrast,
             )
             val processed = ImagePreprocessor.apply(bmp, opts)
-            val outDir = File(getApplication().getExternalFilesDir(null), "processed")
+            val app = getApplication<Application>()
+            val outDir = File(app.getExternalFilesDir(null), "processed")
             val outFile = File(outDir, "${entry.nameWithoutExtension()}_${System.currentTimeMillis()}.jpg")
             val ok = ImagePreprocessor.saveAsJpeg(processed, outFile)
             processed.recycleIfDiff(bmp)
