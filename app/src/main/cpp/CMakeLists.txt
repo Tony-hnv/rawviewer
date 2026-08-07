@@ -37,28 +37,8 @@ endif()
 
 add_library(rawlite SHARED raw_bridge.cpp)
 
-# 递归收集 LibRaw 源码（.cpp + .c），排除不需要的示例/测试
-file(GLOB_RECURSE LIBRAW_CPP
-    "${LIBRAW_ROOT}/src/*.cpp"
-    "${LIBRAW_ROOT}/src/*.c"
-    "${LIBRAW_ROOT}/src/decoders/*.cpp"
-    "${LIBRAW_ROOT}/src/decoders/*.c"
-    "${LIBRAW_ROOT}/src/decompressors/*.cpp"
-    "${LIBRAW_ROOT}/src/decompressors/*.c"
-    "${LIBRAW_ROOT}/src/demosaic/*.cpp"
-    "${LIBRAW_ROOT}/src/demosaic/*.c"
-    "${LIBRAW_ROOT}/src/integration/*.cpp"
-    "${LIBRAW_ROOT}/src/metadata/*.cpp"
-    "${LIBRAW_ROOT}/src/metadata/*.c"
-    "${LIBRAW_ROOT}/src/postprocessing/*.cpp"
-    "${LIBRAW_ROOT}/src/postprocessing/*.c"
-    "${LIBRAW_ROOT}/src/preprocessing/*.cpp"
-    "${LIBRAW_ROOT}/src/preprocessing/*.c"
-    "${LIBRAW_ROOT}/src/utils/*.cpp"
-    "${LIBRAW_ROOT}/src/utils/*.c"
-    "${LIBRAW_ROOT}/src/tables/*.cpp"
-    "${LIBRAW_ROOT}/src/tables/*.c"
-)
+# 递归收集 LibRaw 全部源码（GLOB_RECURSE 已含所有子目录，勿再重复列子目录）。
+file(GLOB_RECURSE LIBRAW_CPP "${LIBRAW_ROOT}/src/*.cpp" "${LIBRAW_ROOT}/src/*.c")
 list(REMOVE_ITEM LIBRAW_CPP
     "${LIBRAW_ROOT}/src/dcraw_common.cpp"
     "${LIBRAW_ROOT}/src/dcraw_crt.cpp"
