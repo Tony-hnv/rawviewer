@@ -172,8 +172,8 @@ private fun PreviewPane(
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("预处理", style = MaterialTheme.typography.titleSmall)
-                SliderRow("亮度", state.brightness, -100f, 100f, onBrightness)
-                SliderRow("对比度", state.contrast, -100f, 100f, onContrast)
+                SliderRow("亮度", state.brightness, -100f..100f, onBrightness)
+                SliderRow("对比度", state.contrast, -100f..100f, onContrast)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("旋转: ${state.rotationDeg.roundToInt()}°", Modifier.width(80.dp))
                     IconButton(onClick = { onRotate(state.rotationDeg - 90f) }) {
