@@ -27,29 +27,108 @@ if(NOT LIBRAW_ROOT)
 endif()
 message(STATUS "Using LibRaw at: ${LIBRAW_ROOT}")
 
-# LibRaw 需要 dng sdk（内嵌在 LibRaw 源码树里）
-set(LIBRAW_DNG "${LIBRAW_ROOT}/internal/dngsdk")
-if(EXISTS "${LIBRAW_DNG}")
-    message(STATUS "DNG SDK found at ${LIBRAW_DNG}")
-else()
-    message(STATUS "NOTE: DNG SDK not found at ${LIBRAW_DNG}; dng-related code may fail")
-endif()
-
-add_library(rawlite SHARED raw_bridge.cpp)
-
-# 递归收集 LibRaw 全部源码（GLOB_RECURSE 已含所有子目录，勿再重复列子目录）。
-file(GLOB_RECURSE LIBRAW_CPP "${LIBRAW_ROOT}/src/*.cpp" "${LIBRAW_ROOT}/src/*.c")
-list(REMOVE_ITEM LIBRAW_CPP
-    "${LIBRAW_ROOT}/src/dcraw_common.cpp"
-    "${LIBRAW_ROOT}/src/dcraw_crt.cpp"
+# ---- LibRaw 官方源文件清单（摘自 LibRaw 的 Makefile.am: lib_libraw_a_SOURCES）----
+# 注意：不要用 file(GLOB ...) 盲扫全部 .cpp，否则会把互斥的 *_ph.cpp / *_dcraw.cpp
+# 同时编译进来导致 duplicate symbol。这里显式列出官方构建使用的文件。
+set(LIBRAW_OFFICIAL_SRC
+    "src/libraw_c_api.cpp"
+    "src/libraw_datastream.cpp"
+    "src/decoders/canon_600.cpp"
+    "src/decoders/crx.cpp"
+    "src/decoders/pana8.cpp"
+    "src/decoders/decoders_dcraw.cpp"
+    "src/decoders/sonycc.cpp"
+    "src/decoders/sony_arw6.cpp"
+    "src/decompressors/losslessjpeg.cpp"
+    "src/decoders/decoders_libraw_dcrdefs.cpp"
+    "src/decoders/olympus14.cpp"
+    "src/decoders/decoders_libraw.cpp"
+    "src/decoders/dng.cpp"
+    "src/decoders/fp_dng.cpp"
+    "src/decoders/fuji_compressed.cpp"
+    "src/decoders/generic.cpp"
+    "src/decoders/kodak_decoders.cpp"
+    "src/decoders/load_mfbacks.cpp"
+    "src/decoders/smal.cpp"
+    "src/decoders/unpack_thumb.cpp"
+    "src/decoders/unpack.cpp"
+    "src/demosaic/aahd_demosaic.cpp"
+    "src/demosaic/ahd_demosaic.cpp"
+    "src/demosaic/dcb_demosaic.cpp"
+    "src/demosaic/dht_demosaic.cpp"
+    "src/demosaic/misc_demosaic.cpp"
+    "src/demosaic/xtrans_demosaic.cpp"
+    "src/integration/dngsdk_glue.cpp"
+    "src/integration/rawspeed_glue.cpp"
+    "src/metadata/adobepano.cpp"
+    "src/metadata/canon.cpp"
+    "src/metadata/ciff.cpp"
+    "src/metadata/cr3_parser.cpp"
+    "src/metadata/epson.cpp"
+    "src/metadata/exif_gps.cpp"
+    "src/metadata/fuji.cpp"
+    "src/metadata/identify_tools.cpp"
+    "src/metadata/identify.cpp"
+    "src/metadata/kodak.cpp"
+    "src/metadata/leica.cpp"
+    "src/metadata/makernotes.cpp"
+    "src/metadata/mediumformat.cpp"
+    "src/metadata/minolta.cpp"
+    "src/metadata/misc_parsers.cpp"
+    "src/metadata/nikon.cpp"
+    "src/metadata/normalize_model.cpp"
+    "src/metadata/olympus.cpp"
+    "src/metadata/hasselblad_model.cpp"
+    "src/metadata/p1.cpp"
+    "src/metadata/pentax.cpp"
+    "src/metadata/samsung.cpp"
+    "src/metadata/sony.cpp"
+    "src/metadata/tiff.cpp"
+    "src/postprocessing/aspect_ratio.cpp"
+    "src/postprocessing/dcraw_process.cpp"
+    "src/postprocessing/mem_image.cpp"
+    "src/postprocessing/postprocessing_aux.cpp"
+    "src/postprocessing/postprocessing_utils_dcrdefs.cpp"
+    "src/postprocessing/postprocessing_utils.cpp"
+    "src/preprocessing/ext_preprocess.cpp"
+    "src/preprocessing/raw2image.cpp"
+    "src/preprocessing/subtract_black.cpp"
+    "src/tables/cameralist.cpp"
+    "src/tables/colorconst.cpp"
+    "src/tables/colordata.cpp"
+    "src/tables/wblists.cpp"
+    "src/utils/curves.cpp"
+    "src/utils/decoder_info.cpp"
+    "src/utils/init_close_utils.cpp"
+    "src/utils/open.cpp"
+    "src/utils/phaseone_processing.cpp"
+    "src/utils/read_utils.cpp"
+    "src/utils/thumb_utils.cpp"
+    "src/utils/utils_dcraw.cpp"
+    "src/utils/utils_libraw.cpp"
+    "src/write/apply_profile.cpp"
+    "src/write/file_write.cpp"
+    "src/write/tiff_writer.cpp"
+    "src/x3f/x3f_parse_process.cpp"
+    "src/x3f/x3f_utils_patched.cpp"
 )
-list(REMOVE_DUPLICATES LIBRAW_CPP)
 
-if(NOT LIBRAW_CPP)
-    message(FATAL_ERROR "No LibRaw source files found under ${LIBRAW_ROOT}/src")
+# 构建绝对路径清单，并过滤不存在的（保持稳健）
+set(LIBRAW_SRC "")
+foreach(rel IN LISTS LIBRAW_OFFICIAL_SRC)
+    if(EXISTS "${LIBRAW_ROOT}/${rel}")
+        list(APPEND LIBRAW_SRC "${LIBRAW_ROOT}/${rel}")
+    else()
+        message(STATUS "SKIP (missing): ${rel}")
+    endif()
+endforeach()
+
+if(NOT LIBRAW_SRC)
+    message(FATAL_ERROR "No LibRaw source files resolved under ${LIBRAW_ROOT}")
 endif()
+message(STATUS "Compiling ${LIBRAW_SRC}")
 
-target_sources(rawlite PRIVATE ${LIBRAW_CPP})
+add_library(rawlite SHARED raw_bridge.cpp ${LIBRAW_SRC})
 target_include_directories(rawlite PRIVATE
     "${LIBRAW_ROOT}"
     "${LIBRAW_ROOT}/src"
@@ -62,8 +141,4 @@ target_compile_definitions(rawlite PRIVATE
     LIBRAW_NO_JPEG
 )
 target_compile_options(rawlite PRIVATE -O2 -fexceptions -frtti)
-target_link_libraries(rawlite
-    android
-    log
-    jnigraphics
-)
+target_link_libraries(rawlite android log jnigraphics)
