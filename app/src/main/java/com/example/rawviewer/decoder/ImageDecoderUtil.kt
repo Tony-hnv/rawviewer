@@ -62,7 +62,7 @@ object ImageDecoderUtil {
             c?.use {
                 if (it.moveToFirst()) {
                     val idx = it.getColumnIndex(MediaStore.Images.Media.DATA)
-                    if (idx >= 0) it.getString(idx)
+                    if (idx >= 0) it.getString(idx) else null
                 } else null
             }
         } catch (t: Throwable) {
