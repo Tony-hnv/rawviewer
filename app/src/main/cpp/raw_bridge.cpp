@@ -136,8 +136,12 @@ Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
         // 关键：强制 8-bit 输出，避免默认 16-bit 导致 data 每像素 6/8 字节
         raw.imgdata.params.output_bps = 8;
         raw.imgdata.params.output_color = 1;   // sRGB
-        raw.imgdata.params.user_qual = 0;       // 高质 demosaic
-        raw.imgdata.params.half_size = 0;
+        raw.imgdata.params.user_qual = 2;       // bilinear（更快更省内存，适合缩略预览）
+        // 关键：half_size=1 让 LibRaw 在 demosaic 时直接输出半分辨率。
+        // 这对 A7C M2 全画幅 3300 万像素（7008x4672）至关重要：
+        // 全尺寸 dcraw_process 峰值内存 ~300MB，低内存手机会 OOM 崩溃；
+        // half_size 后只需 ~1/4，彻底规避崩溃。
+        raw.imgdata.params.half_size = 1;
         raw.imgdata.params.no_auto_bright = 0;
         raw.imgdata.params.gamm[0] = 1.0;
         raw.imgdata.params.gamm[1] = 1.0;
@@ -175,8 +179,8 @@ Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
         LOGI("img: w=%d h=%d data_size=%u spp=%d colors=%d", w, h,
              img->data_size, spp, img->colors);
 
-        // 目标尺寸：最长边限制（默认 2048，避免超大内存与耗时）
-        int cap = (maxDim > 0 && maxDim < 4096) ? maxDim : 2048;
+        // 目标尺寸：最长边限制（默认 1600，配合 half_size 后进一步压低内存与耗时）
+        int cap = (maxDim > 0 && maxDim < 4096) ? maxDim : 1600;
         int tw = w, th = h;
         if (w >= h) { if (w > cap) { th = (int)((long long)h * cap / w); tw = cap; } }
         else        { if (h > cap) { tw = (int)((long long)w * cap / h); th = cap; } }
