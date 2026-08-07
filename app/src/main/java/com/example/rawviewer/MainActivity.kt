@@ -1,9 +1,13 @@
 package com.example.rawviewer
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,7 +15,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.example.rawviewer.ui.MainScreen
@@ -24,6 +27,11 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
+    ) { viewModel.loadImages() }
+
+    // Android 11+ 需要用户授予“所有文件访问”才能写入相册（重命名/覆盖）。
+    private val manageStorageLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
     ) { viewModel.loadImages() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -46,6 +54,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestPermissions() {
+        // Android 11+：先要求“所有文件访问”（写相册需要），再申请读权限
+        if (Build.VERSION.SDK_INT >= 30 &&
+            !Environment.isExternalStorageManager()) {
+            try {
+                manageStorageLauncher.launch(Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:$packageName")
+                ))
+            } catch (e: Throwable) {
+                // 部分设备无此 intent，退回常规读权限
+            }
+        }
         val perms = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= 33) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
