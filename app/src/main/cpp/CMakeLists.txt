@@ -6,30 +6,63 @@ project(rawviewer)
 # 使用 c++_shared STL（LibRaw 需要 C++ 标准库）
 set(CMAKE_ANDROID_STL c++_shared)
 
-# LibRaw 源码根（Android CMake 中 CMAKE_SOURCE_DIR = app/src/main/cpp）
-set(LIBRAW_ROOT "${CMAKE_SOURCE_DIR}/../../libraw" CACHE PATH "LibRaw source root")
+# LibRaw 源码根：相对本 CMakeLists 所在目录 (app/src/main/cpp) -> app/libraw
+set(LIBRAW_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../libraw")
 
-if(NOT EXISTS "${LIBRAW_ROOT}/src/libraw.cpp")
+if(NOT EXISTS "${LIBRAW_ROOT}/libraw/libraw.h")
     message(FATAL_ERROR "LibRaw source not found at ${LIBRAW_ROOT}. "
         "Run: git clone --depth 1 https://github.com/LibRaw/LibRaw.git app/libraw")
 endif()
 
+# LibRaw 需要 dng sdk（内嵌在 LibRaw 源码树里）
+set(LIBRAW_DNG "${LIBRAW_ROOT}/internal/dngsdk")
+if(EXISTS "${LIBRAW_DNG}")
+    message(STATUS "DNG SDK found at ${LIBRAW_DNG}")
+else()
+    message(STATUS "NOTE: DNG SDK not found at ${LIBRAW_DNG}; dng-related code may fail")
+endif()
+
 add_library(rawlite SHARED raw_bridge.cpp)
 
-# LibRaw 实际源码结构：src/ 下平铺所有 .cpp
-file(GLOB LIBRAW_SRC "${LIBRAW_ROOT}/src/*.cpp")
-list(REMOVE_ITEM LIBRAW_SRC
+# 递归收集 LibRaw 源码（.cpp + .c），排除不需要的示例/测试
+file(GLOB_RECURSE LIBRAW_CPP
+    "${LIBRAW_ROOT}/src/*.cpp"
+    "${LIBRAW_ROOT}/src/*.c"
+    "${LIBRAW_ROOT}/src/decoders/*.cpp"
+    "${LIBRAW_ROOT}/src/decoders/*.c"
+    "${LIBRAW_ROOT}/src/decompressors/*.cpp"
+    "${LIBRAW_ROOT}/src/decompressors/*.c"
+    "${LIBRAW_ROOT}/src/demosaic/*.cpp"
+    "${LIBRAW_ROOT}/src/demosaic/*.c"
+    "${LIBRAW_ROOT}/src/integration/*.cpp"
+    "${LIBRAW_ROOT}/src/metadata/*.cpp"
+    "${LIBRAW_ROOT}/src/metadata/*.c"
+    "${LIBRAW_ROOT}/src/postprocessing/*.cpp"
+    "${LIBRAW_ROOT}/src/postprocessing/*.c"
+    "${LIBRAW_ROOT}/src/preprocessing/*.cpp"
+    "${LIBRAW_ROOT}/src/preprocessing/*.c"
+    "${LIBRAW_ROOT}/src/utils/*.cpp"
+    "${LIBRAW_ROOT}/src/utils/*.c"
+    "${LIBRAW_ROOT}/src/tables/*.cpp"
+    "${LIBRAW_ROOT}/src/tables/*.c"
+)
+list(REMOVE_ITEM LIBRAW_CPP
     "${LIBRAW_ROOT}/src/dcraw_common.cpp"
     "${LIBRAW_ROOT}/src/dcraw_crt.cpp"
 )
+list(REMOVE_DUPLICATES LIBRAW_CPP)
 
-target_sources(rawlite PRIVATE ${LIBRAW_SRC})
+if(NOT LIBRAW_CPP)
+    message(FATAL_ERROR "No LibRaw source files found under ${LIBRAW_ROOT}/src")
+endif()
+
+target_sources(rawlite PRIVATE ${LIBRAW_CPP})
 target_include_directories(rawlite PRIVATE
     "${LIBRAW_ROOT}"
     "${LIBRAW_ROOT}/src"
     "${LIBRAW_ROOT}/libraw"
     "${LIBRAW_ROOT}/internal"
-    "${LIBRAW_ROOT}/include"
+    "${LIBRAW_ROOT}/internal/dngsdk"
 )
 target_compile_definitions(rawlite PRIVATE
     LIBRAW_NODLL
