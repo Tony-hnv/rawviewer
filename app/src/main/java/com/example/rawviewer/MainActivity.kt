@@ -65,12 +65,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun hasPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES)
-                == PackageManager.PERMISSION_GRANTED
+        val granted: Boolean
+        if (Build.VERSION.SDK_INT >= 33) {
+            granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_MEDIA_IMAGES
+            ) == PackageManager.PERMISSION_GRANTED
         } else {
-            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE)
-                == PackageManager.PERMISSION_GRANTED
+            granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
         }
+        return granted
     }
 }
