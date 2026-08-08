@@ -29,13 +29,26 @@ static void downsample_to_argb(
         int sy = (syLL >= sh) ? sh - 1 : (int)syLL;
         const uint8_t *row = src + (size_t)sy * sw * spp;
         uint8_t *drow = dst + (size_t)y * tw * 4;
-        // 校验行边界，防越界
+        // 校验行边界，防越界（改进版）
+        // 原实现仅检查了整行是否越界,但在 16-bit(spp==6/8) 时会读取 p[5]/p[7] 产生越界。
+        // 这里先保证行整体在 dataSize 内,后续在每像素循环中再做细粒度检查。
         size_t rowByte = (size_t)sy * sw * spp;
-        if (rowByte + (size_t)sw * spp > dataSize) break;
+        if (rowByte + (size_t)sw * spp > dataSize) break; // 行整体安全
         for (int x = 0; x < tw; ++x) {
             long long sxLL = ((long long)x * sw) / tw;
             int sx = (sxLL >= sw) ? sw - 1 : (int)sxLL;
             const uint8_t *p = row + (size_t)sx * spp;
+            // 逐像素安全检查：确保读取需要的最高索引不越界
+            size_t needed = spp;
+            if (is16) {
+                needed = (spp == 8) ? 8 : 6; // 读取到 p[5] 或 p[7]
+            } else {
+                needed = (spp == 4) ? 4 : 3; // 读取到 p[2] 或 p[3]
+            }
+            if ((size_t)(p - src) + needed > dataSize) {
+                LOGE("downsample overflow: sx=%d needed=%zu out of %zu", sx, needed, dataSize);
+                break;
+            }
             uint8_t r, g, b, a = 0xFF;
             if (is16) {
                 r = p[1]; g = p[3]; b = p[5];
@@ -151,6 +164,14 @@ Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
         LOGI("opened: %d x %d colors=%d", raw.imgdata.sizes.width,
              raw.imgdata.sizes.height, raw.imgdata.idata.colors);
 
+        // 预检查像素总数，防止极大图在解码时 OOM/栈溢出。
+        const long long pixelCount = (long long)raw.imgdata.sizes.width * raw.imgdata.sizes.height;
+        if (pixelCount > 25000000LL) {
+            LOGE("image too large (%lld px), aborting full decode to avoid OOM", pixelCount);
+            raw.recycle();
+            return nullptr; // 让上层回退到缩略图路径
+        }
+
         rc = raw.unpack();
         if (rc != LIBRAW_SUCCESS) { LOGE("unpack failed rc=%d", rc); raw.recycle(); return nullptr; }
         LOGI("unpack ok");
@@ -169,13 +190,17 @@ Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
             free(img->data); free(img); return nullptr;
         }
 
-        // 确定每像素字节数：优先反推，并兼容 3/4/6/8
+        // 确定每像素字节数 (spp)：L=RGB8, R=RGBA8, 6=RGB16, 8=RGBA16
+        // 采用 switch 更清晰，异常值回退为 3 (RGB8)。
         int spp = 3;
-        size_t perPix = img->data_size / ((size_t)w * h);
-        if (perPix == 4) spp = 4;
-        else if (perPix == 6) spp = 6;
-        else if (perPix == 8) spp = 8;
-        else spp = 3;
+        size_t perPix = 0;
+        if (w > 0 && h > 0) perPix = img->data_size / ((size_t)w * h);
+        switch (perPix) {
+            case 4:  spp = 4; break;  // RGBA8
+            case 6:  spp = 6; break;  // RGB16
+            case 8:  spp = 8; break;  // RGBA16
+            default: spp = 3; break;  // RGB8 fallback
+        }
         LOGI("img: w=%d h=%d data_size=%u spp=%d colors=%d", w, h,
              img->data_size, spp, img->colors);
 
