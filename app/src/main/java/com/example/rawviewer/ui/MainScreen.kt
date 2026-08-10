@@ -268,11 +268,21 @@ private fun BulkRenameDialog(
     )
 }
 
+/**
+ * 将文件大小（字节）格式化为人类可读的字符串。
+ * 支持的单位从 B、KB、MB、GB、TB、PB 依次增长。
+ * 当字节数小于等于 0 时返回 "0 B"。
+ */
 private fun formatSize(bytes: Long): String {
     if (bytes <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB")
+    // 扩展单位列表，避免在极大文件时失去精度
+    val units = arrayOf("B", "KB", "MB", "GB", "TB", "PB")
     var v = bytes.toDouble()
     var i = 0
-    while (v >= 1024 && i < units.size - 1) { v /= 1024; i++ }
+    while (v >= 1024 && i < units.size - 1) {
+        v /= 1024
+        i++
+    }
+    // 使用一位小数进行显示，保持一致的 UI 风格
     return String.format("%.1f %s", v, units[i])
 }

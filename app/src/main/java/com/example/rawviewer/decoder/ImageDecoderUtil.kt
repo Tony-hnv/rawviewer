@@ -102,12 +102,30 @@ object ImageDecoderUtil {
         }
     }
 
+    /**
+     * 解码 RAW 文件。
+     * 1️⃣ 首先尝试使用 LibRaw（如果本地库可用），进行全像素或缩略图解码。
+     * 2️⃣ 当 LibRaw 不可用或解码失败时，尝试使用 Android 原生的 BitmapFactory 进行降级解码。
+     *    这在部分手机系统已经内建对 RAW 的支持时能够提供预览，避免在没有 librawlite.so 的环境下直接返回 null。
+     */
     private fun decodeRaw(path: String, maxDimension: Int): Bitmap? {
-        // 1) 全像素解码
-        Holder.libRawBridge.decodeFile(path, maxDimension, 0)?.let { return it }
-        // 2) 降级：内嵌 JPEG 缩略图
-        Holder.libRawBridge.extractThumbnail(path)?.let { return it }
-        return null
+        // 1) 尝试 LibRaw 解码（全像素或内嵌 JPEG）
+        if (Holder.libRawBridge.isAvailable()) {
+            Holder.libRawBridge.decodeFile(path, maxDimension, 0)?.let { return it }
+            Holder.libRawBridge.extractThumbnail(path)?.let { return it }
+        }
+
+        // 2) Fallback: 使用 BitmapFactory 直接尝试解码（某些系统可以直接解析 RAW）
+        return try {
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, opts)
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) return@try null
+            opts.inSampleSize = computeSampleSize(opts.outWidth, opts.outHeight, maxDimension)
+            opts.inJustDecodeBounds = false
+            BitmapFactory.decodeFile(path, opts)
+        } catch (t: Throwable) {
+            null
+        }
     }
 
     @Suppress("DEPRECATION")
