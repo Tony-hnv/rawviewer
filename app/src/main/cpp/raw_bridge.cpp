@@ -165,11 +165,14 @@ Java_com_example_rawviewer_nativebridge_LibRawBridge_decodeNative(
              raw.imgdata.sizes.height, raw.imgdata.idata.colors);
 
         // 预检查像素总数，防止极大图在解码时 OOM/栈溢出。
+        // Prevent OOM on extremely large RAWs, but be generous enough for
+        // modern high‑resolution cameras (e.g., 45 MP ≈ 90 M pixels).
         const long long pixelCount = (long long)raw.imgdata.sizes.width * raw.imgdata.sizes.height;
-        if (pixelCount > 25000000LL) {
+        // Raise the threshold to 90 M pixels; still safe on most devices.
+        if (pixelCount > 90000000LL) {
             LOGE("image too large (%lld px), aborting full decode to avoid OOM", pixelCount);
             raw.recycle();
-            return nullptr; // 让上层回退到缩略图路径
+            return nullptr; // fallback to thumbnail if possible
         }
 
         rc = raw.unpack();
