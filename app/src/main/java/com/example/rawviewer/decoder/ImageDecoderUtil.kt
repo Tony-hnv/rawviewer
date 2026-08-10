@@ -15,7 +15,7 @@ import java.io.File
 
 /**
  * 统一图片解码器：
- * - RAW   -> LibRaw 全像素解码；失败则取内嵌 JPEG 缩略图
+ * - RAW   -> LibRaw 全像素解码；失败则取内嵌 JPEG 缩略图 / BitmapFactory 降级
  * - HEIF  -> ImageDecoder（Android 9+ 系统支持，API 28+）
  * - JPG   -> BitmapFactory
  */
@@ -104,9 +104,8 @@ object ImageDecoderUtil {
 
     /**
      * 解码 RAW 文件。
-     * 1️⃣ 首先尝试使用 LibRaw（如果本地库可用），进行全像素或缩略图解码。
-     * 2️⃣ 当 LibRaw 不可用或解码失败时，尝试使用 Android 原生的 BitmapFactory 进行降级解码。
-     *    这在部分手机系统已经内建对 RAW 的支持时能够提供预览，避免在没有 librawlite.so 的环境下直接返回 null。
+     * 1️⃣ 先尝试 LibRaw（全像素或内嵌 JPEG 缩略图）。
+     * 2️⃣ 若 LibRaw 不可用或失败，降级用 BitmapFactory（部分系统可原生解析 RAW）。
      */
     private fun decodeRaw(path: String, maxDimension: Int): Bitmap? {
         // 1) 尝试 LibRaw 解码（全像素或内嵌 JPEG）
@@ -115,14 +114,17 @@ object ImageDecoderUtil {
             Holder.libRawBridge.extractThumbnail(path)?.let { return it }
         }
 
-        // 2) Fallback: 使用 BitmapFactory 直接尝试解码（某些系统可以直接解析 RAW）
+        // 2) Fallback: 使用 BitmapFactory 直接尝试解码
         return try {
             val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(path, opts)
-            if (opts.outWidth <= 0 || opts.outHeight <= 0) return@try null
-            opts.inSampleSize = computeSampleSize(opts.outWidth, opts.outHeight, maxDimension)
-            opts.inJustDecodeBounds = false
-            BitmapFactory.decodeFile(path, opts)
+            if (opts.outWidth <= 0 || opts.outHeight <= 0) {
+                null
+            } else {
+                opts.inSampleSize = computeSampleSize(opts.outWidth, opts.outHeight, maxDimension)
+                opts.inJustDecodeBounds = false
+                BitmapFactory.decodeFile(path, opts)
+            }
         } catch (t: Throwable) {
             null
         }
@@ -166,9 +168,7 @@ object ImageDecoderUtil {
     }
 
     private fun floorDivToSample(w: Int, h: Int, maxDim: Int): Int {
-        val sample = computeSampleSize(w, h, maxDim)
-        // 返回 2 的幂作为 target sample
-        return sample
+        return computeSampleSize(w, h, maxDim)
     }
 
     /**
