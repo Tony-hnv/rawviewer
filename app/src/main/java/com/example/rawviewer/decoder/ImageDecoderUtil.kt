@@ -33,15 +33,21 @@ object ImageDecoderUtil {
         try {
             when (type) {
         ImageType.RAW -> {
-            // If the native LibRaw bridge is unavailable, we cannot reliably decode RAW.
-            // Previously the code fell back to BitmapFactory which often fails and may
-            // trigger uncaught exceptions on certain devices, resulting in a crash when
-            // attempting to preview RAW images. We now simply return null so the UI can
-            // display a friendly "cannot decode" message instead of crashing.
-            if (!Holder.libRawBridge.isAvailable()) return@withContext null
+            // RAW 解码分两步：① 尝试使用 LibRaw 完整解码；② 若不可用或解码失败，尝试提取内嵌 JPEG 缩略图；③ 都不行则返回 null。
+            // 这样可以避免在不支持的设备上使用 BitmapFactory 直接解码 RAW（会抛异常），并且在缺少 native .so 时仍能提供预览。
+            if (!Holder.libRawBridge.isAvailable()) {
+                // LibRaw 不可用，直接尝试获取内嵌缩略图。
+                val thumb = extractThumbnail(resolveFilePath(context, uri) ?: return@withContext null)
+                if (thumb != null) return@withContext thumb
+                return@withContext null
+            }
+            // LibRaw 可用，优先全像素解码。
             val path = resolveFilePath(context, uri)
-            if (path != null) decodeRaw(path, maxDimension)
-            else decodeRawFromFd(context, uri, maxDimension)
+            val rawBmp = if (path != null) decodeRaw(path, maxDimension) else decodeRawFromFd(context, uri, maxDimension)
+            if (rawBmp != null) return@withContext rawBmp
+            // 全像素解码失败，尝试提取嵌入的 JPEG 缩略图。
+            val thumb = extractThumbnail(path ?: return@withContext null)
+            thumb
         }
                 ImageType.HEIF -> decodeHeif(context, uri, maxDimension)
                 ImageType.JPG -> {
