@@ -38,7 +38,8 @@ object ImageDecoderUtil {
             if (!Holder.libRawBridge.isAvailable()) return@withContext null
             val path = resolveFilePath(context, uri) ?: return@withContext null
             // 首先尝试全像素解码，如果失败则回退到缩略图。
-            decodeRaw(path, maxDimension) ?: extractThumbnail(path)
+            // Try full RAW decode first; if it fails, fall back to extracting the embedded JPEG thumbnail via LibRawBridge.
+            decodeRaw(path, maxDimension) ?: Holder.libRawBridge.extractThumbnail(path)
         }
                 ImageType.HEIF -> decodeHeif(context, uri, maxDimension)
                 ImageType.JPG -> {
