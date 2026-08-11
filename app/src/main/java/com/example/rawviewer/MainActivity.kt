@@ -25,9 +25,20 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
 
+    // Request runtime permissions and load images only if any permission granted.
+    // This prevents the app from attempting to access external storage without
+    // proper authorization, which can cause a SecurityException and crash on
+    // Android 13+ devices.
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { viewModel.loadImages() }
+    ) { grantResults ->
+        // `grantResults` maps permission name to a Boolean indicating grant status.
+        // If at least one required permission is granted, trigger image loading.
+        val anyGranted = grantResults.values.any { it }
+        if (anyGranted) {
+            viewModel.loadImages()
+        }
+    }
 
     // Android 11+ 需要用户授予“所有文件访问”才能写入相册（重命名/覆盖）。
     private val manageStorageLauncher = registerForActivityResult(
