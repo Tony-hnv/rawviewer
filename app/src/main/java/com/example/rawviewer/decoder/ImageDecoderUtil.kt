@@ -32,11 +32,17 @@ object ImageDecoderUtil {
                        maxDimension: Int = 4096): Bitmap? = withContext(Dispatchers.Default) {
         try {
             when (type) {
-                ImageType.RAW -> {
-                    val path = resolveFilePath(context, uri)
-                    if (path != null) decodeRaw(path, maxDimension)
-                    else decodeRawFromFd(context, uri, maxDimension)
-                }
+        ImageType.RAW -> {
+            // If the native LibRaw bridge is unavailable, we cannot reliably decode RAW.
+            // Previously the code fell back to BitmapFactory which often fails and may
+            // trigger uncaught exceptions on certain devices, resulting in a crash when
+            // attempting to preview RAW images. We now simply return null so the UI can
+            // display a friendly "cannot decode" message instead of crashing.
+            if (!Holder.libRawBridge.isAvailable()) return@withContext null
+            val path = resolveFilePath(context, uri)
+            if (path != null) decodeRaw(path, maxDimension)
+            else decodeRawFromFd(context, uri, maxDimension)
+        }
                 ImageType.HEIF -> decodeHeif(context, uri, maxDimension)
                 ImageType.JPG -> {
                     val path = resolveFilePath(context, uri)
