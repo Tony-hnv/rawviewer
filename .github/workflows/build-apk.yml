@@ -34,8 +34,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon
+       - name: Build debug APK
+         # Use the Gradle wrapper we added and enable full stacktrace & warnings.
+         run: ./gradlew assembleDebug --no-daemon --stacktrace --warning-mode all
         env:
           ANDROID_HOME: $ANDROID_SDK_ROOT
 
