@@ -87,6 +87,7 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     "expo-document-picker",
+    "./plugins/with-raw-decoder",
     [
       "expo-audio",
       {

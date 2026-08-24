@@ -2,7 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,9 +16,12 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { importAssets, loadLibrary, renameLibraryFile, saveLibrary } from "@/lib/photo-library";
+import { createRawPreview } from "@/lib/raw-preview";
 import {
   type LibraryFile,
   formatBytes,
@@ -26,6 +29,14 @@ import {
 } from "@/lib/raw-files";
 
 type Filter = "all" | "raw" | "image";
+type RawPreviewStatus = "idle" | "loading" | "ready" | "failed";
+
+interface RawPreviewState {
+  fileId: string | null;
+  status: RawPreviewStatus;
+  uri: string | null;
+  message: string | null;
+}
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "全部" },
@@ -54,9 +65,9 @@ function fileBadge(file: LibraryFile) {
   return file.kind === "raw" ? "RAW" : file.extension.toUpperCase();
 }
 
-function FileThumbnail({ file }: { file: LibraryFile }) {
-  if (file.kind === "image") {
-    return <Image source={{ uri: file.uri }} style={styles.thumbnailImage} contentFit="cover" transition={120} />;
+function FileThumbnail({ file, previewUri }: { file: LibraryFile; previewUri?: string }) {
+  if (file.kind === "image" || previewUri) {
+    return <Image source={{ uri: previewUri ?? file.uri }} style={styles.thumbnailImage} contentFit="cover" transition={120} />;
   }
 
   return (
@@ -78,6 +89,15 @@ export default function LibraryScreen() {
   const [renameDraft, setRenameDraft] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [rawPreviewState, setRawPreviewState] = useState<RawPreviewState>({
+    fileId: null,
+    status: "idle",
+    uri: null,
+    message: null,
+  });
+  const [rawPreviewRetry, setRawPreviewRetry] = useState(0);
+  const rawPreviewCache = useRef<Record<string, string>>({});
+  const detailOffsetX = useSharedValue(0);
 
   const refreshLibrary = useCallback(async () => {
     setIsLoading(true);
@@ -131,6 +151,69 @@ export default function LibraryScreen() {
     setSelectedFile(file);
   }, []);
 
+  const closeDetail = useCallback(() => {
+    detailOffsetX.value = 0;
+    setSelectedFile(null);
+    setIsRenameVisible(false);
+  }, [detailOffsetX]);
+
+  useEffect(() => {
+    if (!selectedFile || selectedFile.kind !== "raw") {
+      setRawPreviewState({ fileId: null, status: "idle", uri: null, message: null });
+      return;
+    }
+
+    const cachedUri = rawPreviewCache.current[selectedFile.id];
+    if (cachedUri) {
+      setRawPreviewState({ fileId: selectedFile.id, status: "ready", uri: cachedUri, message: null });
+      return;
+    }
+
+    let isCurrent = true;
+    setRawPreviewState({ fileId: selectedFile.id, status: "loading", uri: null, message: null });
+    void createRawPreview(selectedFile.uri)
+      .then((previewUri) => {
+        if (!isCurrent) return;
+        rawPreviewCache.current[selectedFile.id] = previewUri;
+        setRawPreviewState({ fileId: selectedFile.id, status: "ready", uri: previewUri, message: null });
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) return;
+        const message = error instanceof Error ? error.message : "RAW 解码失败。";
+        setRawPreviewState({ fileId: selectedFile.id, status: "failed", uri: null, message });
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [rawPreviewRetry, selectedFile]);
+
+  const edgeBackGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .hitSlop({ left: 0, width: 34 })
+        .activeOffsetX(18)
+        .failOffsetY([-22, 22])
+        .onUpdate((event) => {
+          detailOffsetX.value = Math.max(0, event.translationX);
+        })
+        .onEnd((event) => {
+          const shouldDismiss = event.translationX > 86 || event.velocityX > 900;
+          if (shouldDismiss) {
+            detailOffsetX.value = withTiming(420, { duration: 180 }, (finished) => {
+              if (finished) runOnJS(closeDetail)();
+            });
+            return;
+          }
+          detailOffsetX.value = withTiming(0, { duration: 160 });
+        }),
+    [closeDetail, detailOffsetX],
+  );
+
+  const detailAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: detailOffsetX.value }],
+  }));
+
   const openRename = useCallback(() => {
     if (!selectedFile) return;
     feedback("light");
@@ -163,12 +246,16 @@ export default function LibraryScreen() {
   }, [files, renameDraft, selectedFile]);
 
   if (selectedFile) {
-    const canRenderImage = selectedFile.kind === "image" && !imageFailed;
+    const rawPreviewUri = rawPreviewState.fileId === selectedFile.id ? rawPreviewState.uri : null;
+    const isRawPreviewLoading = selectedFile.kind === "raw" && rawPreviewState.status === "loading";
+    const canRenderImage = (selectedFile.kind === "image" && !imageFailed) || Boolean(rawPreviewUri);
     return (
+      <GestureDetector gesture={edgeBackGesture}>
+        <Animated.View style={[styles.flexFill, detailAnimatedStyle]}>
       <ScreenContainer className="flex-1" containerClassName="bg-background">
         <StatusBar barStyle="light-content" />
         <View style={styles.detailHeader}>
-          <Pressable onPress={() => setSelectedFile(null)} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]} accessibilityLabel="返回文件库">
+          <Pressable onPress={closeDetail} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]} accessibilityLabel="返回文件库">
             <MaterialIcons name="arrow-back" size={24} color="#F4F1EA" />
           </Pressable>
           <Text style={styles.detailTitle} numberOfLines={1}>文件预览</Text>
@@ -180,11 +267,17 @@ export default function LibraryScreen() {
         <View style={styles.previewArea}>
           {canRenderImage ? (
             <Image
-              source={{ uri: selectedFile.uri }}
+              source={{ uri: rawPreviewUri ?? selectedFile.uri }}
               style={styles.previewImage}
               contentFit="contain"
               onError={() => setImageFailed(true)}
             />
+          ) : isRawPreviewLoading ? (
+            <View style={styles.rawPreview}>
+              <ActivityIndicator size="large" color="#D7983D" />
+              <Text style={styles.rawPreviewTitle}>正在解码 RAW 文件</Text>
+              <Text style={styles.rawPreviewText}>首次预览会在设备本地生成 PNG 缓存，完成后将直接显示图像。</Text>
+            </View>
           ) : (
             <View style={styles.rawPreview}>
               <View style={styles.rawPreviewIcon}>
@@ -193,9 +286,15 @@ export default function LibraryScreen() {
               <Text style={styles.rawPreviewTitle}>{selectedFile.kind === "raw" ? `${selectedFile.brand} RAW` : "无法渲染预览"}</Text>
               <Text style={styles.rawPreviewText}>
                 {selectedFile.kind === "raw"
-                  ? "当前运行环境已导入并保留原始 RAW 文件。安装含原生 RAW 解码器的构建后，可渲染该格式的像素级预览。"
+                  ? rawPreviewState.message ?? "解码器未能生成预览图。"
                   : "设备无法解码此图像，但文件仍安全保存在图库中。"}
               </Text>
+              {selectedFile.kind === "raw" && (
+                <Pressable onPress={() => setRawPreviewRetry((value) => value + 1)} style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}>
+                  <MaterialIcons name="refresh" size={18} color="#F4D298" />
+                  <Text style={styles.retryButtonText}>重新解码</Text>
+                </Pressable>
+              )}
             </View>
           )}
         </View>
@@ -218,6 +317,10 @@ export default function LibraryScreen() {
             <Text style={styles.infoLabel}>导入方式</Text>
             <Text style={styles.infoValue}>本地副本</Text>
           </View>
+          <View style={styles.backHintRow}>
+            <MaterialIcons name="swipe-right" size={16} color="#7E8B95" />
+            <Text style={styles.backHintText}>向右侧滑可返回文件库</Text>
+          </View>
           <Pressable onPress={openRename} style={({ pressed }) => [styles.primaryButton, pressed && styles.primaryButtonPressed]}>
             <MaterialIcons name="drive-file-rename-outline" size={21} color="#11161C" />
             <Text style={styles.primaryButtonText}>重命名文件</Text>
@@ -235,6 +338,8 @@ export default function LibraryScreen() {
         />
         <SupportModal visible={isSupportVisible} onClose={() => setIsSupportVisible(false)} />
       </ScreenContainer>
+        </Animated.View>
+      </GestureDetector>
     );
   }
 
@@ -276,7 +381,7 @@ export default function LibraryScreen() {
           contentContainerStyle={filteredFiles.length === 0 ? styles.emptyList : styles.listContent}
           renderItem={({ item }) => (
             <Pressable onPress={() => openFile(item)} style={({ pressed }) => [styles.fileCard, pressed && styles.fileCardPressed]}>
-              <FileThumbnail file={item} />
+              <FileThumbnail file={item} previewUri={rawPreviewCache.current[item.id]} />
               <View style={styles.fileCardContent}>
                 <Text style={styles.fileCardName} numberOfLines={1}>{item.fileName}</Text>
                 <Text style={styles.fileCardMeta}>{item.brand} · {formatBytes(item.size)}</Text>
@@ -376,7 +481,7 @@ function SupportModal({ visible, onClose }: { visible: boolean; onClose: () => v
           </View>
           <View style={styles.noticeBox}>
             <MaterialIcons name="info-outline" size={18} color="#D7983D" />
-            <Text style={styles.noticeText}>PNG、JPG 与 JPEG 将直接尝试预览。RAW 文件会安全导入并保留原始格式；完整 RAW 像素解码需要含原生解码器的 Android 构建。</Text>
+            <Text style={styles.noticeText}>PNG、JPG 与 JPEG 可直接预览。RAW 文件会在 Android 原生构建中解码并生成设备本地 PNG 缓存；Expo Go 不包含该原生解码器。</Text>
           </View>
         </View>
       </View>
@@ -385,6 +490,7 @@ function SupportModal({ visible, onClose }: { visible: boolean; onClose: () => v
 }
 
 const styles = StyleSheet.create({
+  flexFill: { flex: 1 },
   libraryHeader: { paddingHorizontal: 22, paddingTop: 14, paddingBottom: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   kicker: { color: "#D7983D", fontSize: 10, letterSpacing: 1.6, fontWeight: "700", marginBottom: 5 },
   title: { color: "#F4F1EA", fontSize: 30, lineHeight: 36, fontWeight: "800", letterSpacing: -0.5 },
@@ -428,6 +534,8 @@ const styles = StyleSheet.create({
   rawPreviewIcon: { width: 82, height: 82, borderRadius: 41, borderWidth: 1, borderColor: "#675233", backgroundColor: "#231F18", justifyContent: "center", alignItems: "center", marginBottom: 16 },
   rawPreviewTitle: { color: "#F4F1EA", fontSize: 20, lineHeight: 26, fontWeight: "800", marginBottom: 8 },
   rawPreviewText: { color: "#AAB4BE", textAlign: "center", fontSize: 13, lineHeight: 20 },
+  retryButton: { marginTop: 18, minHeight: 40, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: "#71582F", backgroundColor: "#382D20", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
+  retryButtonText: { color: "#F4D298", fontSize: 13, fontWeight: "800" },
   detailSheet: { backgroundColor: "#1B242D", borderTopLeftRadius: 26, borderTopRightRadius: 26, paddingHorizontal: 22, paddingBottom: 18, paddingTop: 9, borderTopWidth: 1, borderColor: "#2B3944" },
   sheetHandle: { height: 4, width: 38, borderRadius: 2, backgroundColor: "#52616E", alignSelf: "center", marginBottom: 16 },
   fileTitleRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
@@ -440,6 +548,8 @@ const styles = StyleSheet.create({
   infoRow: { minHeight: 26, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   infoLabel: { color: "#AAB4BE", fontSize: 12 },
   infoValue: { color: "#E6E9E9", fontSize: 12, fontWeight: "700" },
+  backHintRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8 },
+  backHintText: { color: "#7E8B95", fontSize: 11, lineHeight: 16 },
   primaryButton: { marginTop: 15, height: 50, borderRadius: 15, backgroundColor: "#D7983D", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
   primaryButtonText: { color: "#11161C", fontSize: 14, fontWeight: "800" },
   primaryButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
