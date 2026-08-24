@@ -25,9 +25,32 @@ import com.homesoft.photo.libraw.LibRaw
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import kotlin.math.roundToInt
 
 class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactContextBaseJavaModule(appContext) {
   override fun getName() = "RawDecoder"
+
+  private fun createEncodablePreview(decodedBitmap: Bitmap): Bitmap {
+    val softwareBitmap = if (decodedBitmap.config == Bitmap.Config.HARDWARE) {
+      decodedBitmap.copy(Bitmap.Config.ARGB_8888, false)
+        ?: throw IllegalStateException("Unable to copy RAW bitmap for preview encoding.")
+    } else {
+      decodedBitmap
+    }
+
+    val maxPreviewEdge = 2048
+    val longestEdge = maxOf(softwareBitmap.width, softwareBitmap.height)
+    if (longestEdge <= maxPreviewEdge) return softwareBitmap
+
+    val scale = maxPreviewEdge.toFloat() / longestEdge.toFloat()
+    val targetWidth = (softwareBitmap.width * scale).roundToInt().coerceAtLeast(1)
+    val targetHeight = (softwareBitmap.height * scale).roundToInt().coerceAtLeast(1)
+    val scaledBitmap = Bitmap.createScaledBitmap(softwareBitmap, targetWidth, targetHeight, true)
+    if (softwareBitmap !== decodedBitmap) {
+      softwareBitmap.recycle()
+    }
+    return scaledBitmap
+  }
 
   @ReactMethod
   fun decodeRaw(sourceUri: String, promise: Promise) {
@@ -47,12 +70,19 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       val options = BitmapFactory.Options().apply {
         inPreferredConfig = Bitmap.Config.ARGB_8888
       }
-      val previewBitmap = LibRaw().use { decoder ->
+      val decodedBitmap = LibRaw().use { decoder ->
         decoder.decodeBitmap(sourceFile.absolutePath, options)
       }
+      val previewBitmap = createEncodablePreview(decodedBitmap)
       val outputFile = File(appContext.cacheDir, "raw-preview-\${UUID.randomUUID()}.png")
-      FileOutputStream(outputFile).use { stream ->
-        check(previewBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "Unable to save RAW preview." }
+      try {
+        FileOutputStream(outputFile).use { stream ->
+          check(previewBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "Unable to encode RAW preview as PNG." }
+        }
+      } finally {
+        if (previewBitmap !== decodedBitmap) {
+          previewBitmap.recycle()
+        }
       }
       promise.resolve("file://\${outputFile.absolutePath}")
     } catch (error: Exception) {
