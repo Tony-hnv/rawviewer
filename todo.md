@@ -19,3 +19,4 @@
 - [x] 重新编译并验证发布构建版本与 RAW 预览链路
 - [x] 绕过 AndroidLibRaw 硬件位图复制，改用软件 RAW 输出路径生成 ARW 预览
 - [x] 重新编译并验证 Sony ARW 软件预览构建
+- [ ] 检查 GitHub 授权并将 RAW View 项目推送到用户仓库
