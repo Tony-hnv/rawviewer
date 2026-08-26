@@ -124,7 +124,7 @@ export default function LibraryScreen() {
       const result = await DocumentPicker.getDocumentAsync({
         type: "*/*",
         multiple: true,
-        copyToCacheDirectory: true,
+        copyToCacheDirectory: false,
       });
       if (result.canceled) return;
 
@@ -490,7 +490,7 @@ function RenameModal({
             <Text style={styles.renamePreviewLabel}>将保存为</Text>
             <Text style={styles.renamePreviewName} numberOfLines={1}>{nextFileName || "请输入有效名称"}</Text>
           </View>
-          <Text style={styles.renameHelperText}>重命名仅作用于应用内的本地副本，原始相机文件不会被修改。</Text>
+          <Text style={styles.renameHelperText}>会优先改名原始文件；若来源不允许写入，至少会更新应用内的本地副本。</Text>
           <View style={styles.modalActions}>
             <Pressable onPress={onCancel} disabled={isSaving} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Text style={styles.secondaryButtonText}>取消</Text></Pressable>
             <Pressable onPress={onConfirm} disabled={!isReady} style={({ pressed }) => [styles.confirmButton, !isReady && styles.confirmButtonDisabled, (pressed || isSaving) && isReady && styles.primaryButtonPressed]}>

@@ -20,6 +20,7 @@ export interface LibraryFile {
   kind: MediaKind;
   brand: CameraBrand;
   uri: string;
+  sourceUri?: string;
   size: number;
   importedAt: number;
 }

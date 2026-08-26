@@ -18,7 +18,10 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
+import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -31,6 +34,87 @@ import kotlin.math.roundToInt
 
 class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactContextBaseJavaModule(appContext) {
   override fun getName() = "RawDecoder"
+
+  private fun persistUriPermission(uri: Uri) {
+    if (uri.scheme != "content") return
+    try {
+      appContext.contentResolver.takePersistableUriPermission(
+        uri,
+        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+      )
+    } catch (_: SecurityException) {
+      // Some providers grant a session-only URI. The app can still copy the selected file now.
+    }
+  }
+
+  private fun inputStreamFor(uri: Uri) = when (uri.scheme) {
+    "file" -> File(requireNotNull(uri.path) { "File path is unavailable." }).inputStream()
+    else -> requireNotNull(appContext.contentResolver.openInputStream(uri)) { "Unable to read the selected file." }
+  }
+
+  @ReactMethod
+  fun copyToLibrary(sourceUri: String, destinationUri: String, promise: Promise) {
+    try {
+      val source = Uri.parse(sourceUri)
+      val destination = Uri.parse(destinationUri)
+      persistUriPermission(source)
+      val outputFile = File(requireNotNull(destination.path) { "Destination path is unavailable." })
+      outputFile.parentFile?.mkdirs()
+      inputStreamFor(source).use { input ->
+        outputFile.outputStream().use { output -> input.copyTo(output) }
+      }
+      check(outputFile.exists() && outputFile.length() > 0L) { "LIBRARY_COPY_FAILED: Copied file is empty." }
+      promise.resolve("file://" + outputFile.absolutePath)
+    } catch (error: Exception) {
+      promise.reject("LIBRARY_COPY_FAILED", error.message ?: "Unable to import selected file.", error)
+    }
+  }
+
+  @ReactMethod
+  fun renameLibraryFile(localUri: String, sourceUri: String?, newFileName: String, promise: Promise) {
+    try {
+      val localFile = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
+      check(localFile.exists()) { "LOCAL_FILE_MISSING: Import the file again before renaming." }
+      val renamedLocalFile = File(requireNotNull(localFile.parentFile), newFileName)
+      check(!renamedLocalFile.exists() || renamedLocalFile.canonicalPath == localFile.canonicalPath) { "A file with this name already exists." }
+      check(localFile.renameTo(renamedLocalFile)) { "LOCAL_RENAME_FAILED: Android could not rename the local copy." }
+
+      var resolvedSourceUri = sourceUri
+      var sourceRenamed = false
+      var sourceRenameError: String? = null
+      if (!sourceUri.isNullOrBlank()) {
+        try {
+          val source = Uri.parse(sourceUri)
+          persistUriPermission(source)
+          if (source.scheme == "content") {
+            val renamedSource = DocumentsContract.renameDocument(appContext.contentResolver, source, newFileName)
+            if (renamedSource != null) {
+              resolvedSourceUri = renamedSource.toString()
+              sourceRenamed = true
+            }
+          } else if (source.scheme == "file") {
+            val sourceFile = File(requireNotNull(source.path))
+            if (sourceFile.exists() && sourceFile.canonicalPath != localFile.canonicalPath) {
+              sourceRenamed = sourceFile.renameTo(File(requireNotNull(sourceFile.parentFile), newFileName))
+              if (sourceRenamed) resolvedSourceUri = "file://" + File(requireNotNull(sourceFile.parentFile), newFileName).absolutePath
+            }
+          }
+        } catch (error: Exception) {
+          sourceRenameError = error.message
+        }
+      }
+
+      val response = Arguments.createMap().apply {
+        putString("uri", "file://" + renamedLocalFile.absolutePath)
+        putString("sourceUri", resolvedSourceUri)
+        putBoolean("sourceRenamed", sourceRenamed)
+        if (sourceRenameError != null) putString("sourceRenameError", sourceRenameError)
+      }
+      promise.resolve(response)
+    } catch (error: Exception) {
+      promise.reject("LOCAL_RENAME_FAILED", error.message ?: "Unable to rename local file.", error)
+    }
+  }
 
   private fun decodeSoftwareBitmap(sourcePath: String): Bitmap {
     return LibRaw().use { decoder ->
@@ -207,4 +291,4 @@ function withRawDecoder(config) {
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.0");
+module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.1");
