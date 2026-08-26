@@ -23,14 +23,17 @@ async function ensureLibraryDirectory() {
   });
 }
 
-async function getAvailableFileName(fileName: string): Promise<string> {
+async function getAvailableFileName(fileName: string, sourceUri?: string): Promise<string> {
   const lastDot = fileName.lastIndexOf(".");
   const rawBaseName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
   const extension = lastDot > 0 ? fileName.slice(lastDot) : "";
   let candidate = fileName;
   let suffix = 1;
 
-  while ((await FileSystem.getInfoAsync(`${LIBRARY_DIRECTORY}${candidate}`)).exists) {
+  while (true) {
+    const candidateUri = `${LIBRARY_DIRECTORY}${candidate}`;
+    const candidateInfo = await FileSystem.getInfoAsync(candidateUri);
+    if (!candidateInfo.exists || candidateUri === sourceUri) break;
     candidate = `${rawBaseName} (${suffix}).${extension.replace(".", "")}`;
     suffix += 1;
   }
@@ -99,9 +102,29 @@ export async function renameLibraryFile(
   const requestedName = createFileName(requestedBaseName, file.extension as SupportedExtension);
   if (requestedName === file.fileName) return file;
 
-  const destinationName = await getAvailableFileName(requestedName);
+  const sourceInfo = await FileSystem.getInfoAsync(file.uri);
+  if (!sourceInfo.exists) {
+    throw new Error("原始本地副本不存在，无法重命名。");
+  }
+
+  const destinationName = await getAvailableFileName(requestedName, file.uri);
   const destination = `${LIBRARY_DIRECTORY}${destinationName}`;
-  await FileSystem.moveAsync({ from: file.uri, to: destination });
+  await FileSystem.copyAsync({ from: file.uri, to: destination });
+
+  const destinationInfo = await FileSystem.getInfoAsync(destination);
+  const sourceSize = file.size;
+  const destinationSize = destinationInfo.exists ? destinationInfo.size ?? 0 : 0;
+  if (!destinationInfo.exists || (sourceSize > 0 && destinationSize !== sourceSize)) {
+    await FileSystem.deleteAsync(destination, { idempotent: true });
+    throw new Error("新文件校验失败，原文件未被修改。");
+  }
+
+  try {
+    await FileSystem.deleteAsync(file.uri, { idempotent: true });
+  } catch (error) {
+    await FileSystem.deleteAsync(destination, { idempotent: true });
+    throw error;
+  }
 
   return {
     ...file,

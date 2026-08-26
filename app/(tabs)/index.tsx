@@ -89,6 +89,7 @@ export default function LibraryScreen() {
   const [renameDraft, setRenameDraft] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
+  const [renameNotice, setRenameNotice] = useState<string | null>(null);
   const [rawPreviewState, setRawPreviewState] = useState<RawPreviewState>({
     fileId: null,
     status: "idle",
@@ -114,6 +115,8 @@ export default function LibraryScreen() {
     if (filter === "all") return files;
     return files.filter((file) => file.kind === filter);
   }, [files, filter]);
+
+  const rawFileCount = useMemo(() => files.filter((file) => file.kind === "raw").length, [files]);
 
   const handleImport = useCallback(async () => {
     setIsImporting(true);
@@ -148,6 +151,7 @@ export default function LibraryScreen() {
   const openFile = useCallback((file: LibraryFile) => {
     feedback("light");
     setImageFailed(false);
+    setRenameNotice(null);
     setSelectedFile(file);
   }, []);
 
@@ -155,6 +159,7 @@ export default function LibraryScreen() {
     detailOffsetX.value = 0;
     setSelectedFile(null);
     setIsRenameVisible(false);
+    setRenameNotice(null);
   }, [detailOffsetX]);
 
   useEffect(() => {
@@ -233,13 +238,15 @@ export default function LibraryScreen() {
     try {
       const renamed = await renameLibraryFile(selectedFile, cleanName);
       const nextFiles = files.map((file) => (file.id === renamed.id ? renamed : file));
+      await saveLibrary(nextFiles);
       setFiles(nextFiles);
       setSelectedFile(renamed);
-      await saveLibrary(nextFiles);
       setIsRenameVisible(false);
+      setRenameNotice(`已重命名为 ${renamed.fileName}`);
       feedback("success");
-    } catch {
-      Alert.alert("重命名未完成", "文件可能正在被其他应用使用，或设备存储空间不足。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "文件可能正在被其他应用使用，或设备存储空间不足。";
+      Alert.alert("重命名未完成", message);
     } finally {
       setIsRenaming(false);
     }
@@ -317,6 +324,12 @@ export default function LibraryScreen() {
             <Text style={styles.infoLabel}>导入方式</Text>
             <Text style={styles.infoValue}>本地副本</Text>
           </View>
+          {renameNotice && (
+            <View style={styles.renameNotice}>
+              <MaterialIcons name="check-circle" size={17} color="#69C99A" />
+              <Text style={styles.renameNoticeText} numberOfLines={1}>{renameNotice}</Text>
+            </View>
+          )}
           <View style={styles.backHintRow}>
             <MaterialIcons name="swipe-right" size={16} color="#7E8B95" />
             <Text style={styles.backHintText}>向右侧滑可返回文件库</Text>
@@ -333,6 +346,7 @@ export default function LibraryScreen() {
           value={renameDraft}
           isSaving={isRenaming}
           onChangeText={setRenameDraft}
+          onClear={() => setRenameDraft("")}
           onCancel={() => setIsRenameVisible(false)}
           onConfirm={confirmRename}
         />
@@ -351,6 +365,10 @@ export default function LibraryScreen() {
           <Text style={styles.kicker}>LOCAL PHOTO LIBRARY</Text>
           <Text style={styles.title}>RAW View</Text>
           <Text style={styles.subtitle}>浏览、整理并安全重命名相机文件</Text>
+          <View style={styles.libraryStatusRow}>
+            <MaterialIcons name="folder-open" size={14} color="#D7983D" />
+            <Text style={styles.libraryStatusText}>已保存 {files.length} 个本地副本，其中 {rawFileCount} 个 RAW</Text>
+          </View>
         </View>
         <Pressable onPress={() => setIsSupportVisible(true)} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]} accessibilityLabel="查看支持格式">
           <MaterialIcons name="info-outline" size={24} color="#AAB4BE" />
@@ -421,6 +439,7 @@ function RenameModal({
   value,
   isSaving,
   onChangeText,
+  onClear,
   onCancel,
   onConfirm,
 }: {
@@ -429,9 +448,14 @@ function RenameModal({
   value: string;
   isSaving: boolean;
   onChangeText: (value: string) => void;
+  onClear: () => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const cleanName = sanitizeBaseName(value);
+  const nextFileName = cleanName ? `${cleanName}.${file.extension}` : "";
+  const isReady = Boolean(cleanName) && nextFileName !== file.fileName && !isSaving;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <View style={styles.modalBackdrop}>
@@ -444,18 +468,32 @@ function RenameModal({
               value={value}
               onChangeText={onChangeText}
               autoFocus
+              maxLength={96}
               returnKeyType="done"
-              onSubmitEditing={onConfirm}
+              onSubmitEditing={() => {
+                if (isReady) onConfirm();
+              }}
               style={styles.renameInput}
               placeholder="输入文件名"
               placeholderTextColor="#62717D"
               selectionColor="#D7983D"
             />
+            {value.length > 0 && (
+              <Pressable onPress={onClear} style={({ pressed }) => [styles.clearRenameButton, pressed && styles.pressed]} accessibilityLabel="清空文件名">
+                <MaterialIcons name="close" size={17} color="#AAB4BE" />
+              </Pressable>
+            )}
             <Text style={styles.extensionSuffix}>.{file.extension}</Text>
           </View>
+          <View style={styles.renamePreviewRow}>
+            <MaterialIcons name="drive-file-rename-outline" size={16} color="#8D9AA4" />
+            <Text style={styles.renamePreviewLabel}>将保存为</Text>
+            <Text style={styles.renamePreviewName} numberOfLines={1}>{nextFileName || "请输入有效名称"}</Text>
+          </View>
+          <Text style={styles.renameHelperText}>重命名仅作用于应用内的本地副本，原始相机文件不会被修改。</Text>
           <View style={styles.modalActions}>
             <Pressable onPress={onCancel} disabled={isSaving} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Text style={styles.secondaryButtonText}>取消</Text></Pressable>
-            <Pressable onPress={onConfirm} disabled={isSaving} style={({ pressed }) => [styles.confirmButton, (pressed || isSaving) && styles.primaryButtonPressed]}>
+            <Pressable onPress={onConfirm} disabled={!isReady} style={({ pressed }) => [styles.confirmButton, !isReady && styles.confirmButtonDisabled, (pressed || isSaving) && isReady && styles.primaryButtonPressed]}>
               {isSaving ? <ActivityIndicator color="#11161C" /> : <Text style={styles.confirmButtonText}>确认重命名</Text>}
             </Pressable>
           </View>
@@ -495,6 +533,8 @@ const styles = StyleSheet.create({
   kicker: { color: "#D7983D", fontSize: 10, letterSpacing: 1.6, fontWeight: "700", marginBottom: 5 },
   title: { color: "#F4F1EA", fontSize: 30, lineHeight: 36, fontWeight: "800", letterSpacing: -0.5 },
   subtitle: { color: "#AAB4BE", fontSize: 13, lineHeight: 19, marginTop: 4 },
+  libraryStatusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 10 },
+  libraryStatusText: { color: "#7F8E99", fontSize: 11, lineHeight: 16, fontWeight: "600" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: "#1B242D" },
   pressed: { opacity: 0.68 },
   filterRow: { paddingHorizontal: 22, flexDirection: "row", gap: 8, marginBottom: 14 },
@@ -548,6 +588,8 @@ const styles = StyleSheet.create({
   infoRow: { minHeight: 26, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   infoLabel: { color: "#AAB4BE", fontSize: 12 },
   infoValue: { color: "#E6E9E9", fontSize: 12, fontWeight: "700" },
+  renameNotice: { marginTop: 10, minHeight: 34, borderRadius: 10, paddingHorizontal: 10, backgroundColor: "#19352C", flexDirection: "row", alignItems: "center", gap: 7 },
+  renameNoticeText: { flex: 1, color: "#BFE8D0", fontSize: 11, lineHeight: 16, fontWeight: "700" },
   backHintRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8 },
   backHintText: { color: "#7E8B95", fontSize: 11, lineHeight: 16 },
   primaryButton: { marginTop: 15, height: 50, borderRadius: 15, backgroundColor: "#D7983D", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
@@ -559,11 +601,17 @@ const styles = StyleSheet.create({
   modalDescription: { color: "#AAB4BE", fontSize: 12, lineHeight: 18, marginTop: 5 },
   renameInputRow: { marginTop: 20, minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: "#586976", backgroundColor: "#11161C", flexDirection: "row", alignItems: "center", paddingHorizontal: 14 },
   renameInput: { flex: 1, color: "#F4F1EA", fontSize: 15, paddingVertical: 12, minWidth: 0 },
+  clearRenameButton: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: "#26333E" },
   extensionSuffix: { color: "#D7983D", fontSize: 14, fontWeight: "700", marginLeft: 8 },
+  renamePreviewRow: { marginTop: 12, flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
+  renamePreviewLabel: { color: "#8D9AA4", fontSize: 11, fontWeight: "600" },
+  renamePreviewName: { flex: 1, color: "#E9D0A4", fontSize: 12, lineHeight: 17, fontWeight: "800" },
+  renameHelperText: { color: "#7F8E99", fontSize: 11, lineHeight: 16, marginTop: 8 },
   modalActions: { flexDirection: "row", gap: 10, marginTop: 16 },
   secondaryButton: { height: 48, flex: 1, alignItems: "center", justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: "#4D5C67" },
   secondaryButtonText: { color: "#E3E7E8", fontSize: 14, fontWeight: "800" },
   confirmButton: { height: 48, flex: 1.6, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: "#D7983D" },
+  confirmButtonDisabled: { opacity: 0.42 },
   confirmButtonText: { color: "#11161C", fontSize: 14, fontWeight: "800" },
   supportCard: { marginHorizontal: 20, marginBottom: 26, borderRadius: 22, backgroundColor: "#1B242D", padding: 20, borderWidth: 1, borderColor: "#394955" },
   supportTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 16 },
