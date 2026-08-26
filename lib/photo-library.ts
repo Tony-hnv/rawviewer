@@ -15,6 +15,8 @@ import {
 const STORAGE_KEY = "raw-view-library-v1";
 const LIBRARY_DIRECTORY = `${FileSystem.documentDirectory}raw-view-library/`;
 
+type ImportAsset = Pick<DocumentPickerAsset, "name" | "uri" | "size">;
+
 function makeId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -59,7 +61,7 @@ export async function saveLibrary(files: LibraryFile[]) {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(files));
 }
 
-export async function importAssets(assets: DocumentPickerAsset[]): Promise<{
+export async function importAssets(assets: ImportAsset[]): Promise<{
   imported: LibraryFile[];
   skipped: string[];
 }> {

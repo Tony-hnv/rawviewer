@@ -1,6 +1,5 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as Haptics from "expo-haptics";
-import { Image } from "expo-image";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
@@ -8,6 +7,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { ZoomableImage } from "@/components/zoomable-image";
 import { loadLibrary, renameLibraryFile } from "@/lib/photo-library";
 import { createRawPreview } from "@/lib/raw-preview";
 import { type LibraryFile, formatBytes, sanitizeBaseName } from "@/lib/raw-files";
@@ -131,7 +131,7 @@ export default function DetailScreen() {
           </View>
 
           <View style={styles.previewArea}>
-            {canRender ? <Image source={{ uri: isImage ? file.uri : preview.uri ?? "" }} style={styles.image} contentFit="contain" /> : preview.status === "loading" ? <View style={styles.centered}><ActivityIndicator size="large" color="#D7983D" /><Text style={styles.previewTitle}>正在解码 RAW 文件</Text><Text style={styles.previewText}>首次预览会生成设备本地缓存。</Text></View> : <View style={styles.centered}><View style={styles.rawIcon}><MaterialIcons name="camera" size={42} color="#D7983D" /></View><Text style={styles.previewTitle}>{file.brand} RAW</Text><Text style={styles.previewText}>{preview.message ?? "无法生成预览图。"}</Text><Pressable onPress={() => setRetryCount((value) => value + 1)} style={styles.retryButton}><MaterialIcons name="refresh" size={18} color="#F4D298" /><Text style={styles.retryText}>重新解码</Text></Pressable></View>}
+            {canRender ? <ZoomableImage uri={isImage ? file.uri : preview.uri ?? ""} /> : preview.status === "loading" ? <View style={styles.centered}><ActivityIndicator size="large" color="#D7983D" /><Text style={styles.previewTitle}>正在解码 RAW 文件</Text><Text style={styles.previewText}>首次预览会生成设备本地缓存。</Text></View> : <View style={styles.centered}><View style={styles.rawIcon}><MaterialIcons name="camera" size={42} color="#D7983D" /></View><Text style={styles.previewTitle}>{file.brand} RAW</Text><Text style={styles.previewText}>{preview.message ?? "无法生成预览图。"}</Text><Pressable onPress={() => setRetryCount((value) => value + 1)} style={styles.retryButton}><MaterialIcons name="refresh" size={18} color="#F4D298" /><Text style={styles.retryText}>重新解码</Text></Pressable></View>}
           </View>
 
           <View style={styles.sheet}>

@@ -8,7 +8,14 @@ interface NativeFileRenameResult {
   sourceRenameError?: string | null;
 }
 
+export interface WritableDocumentAsset {
+  name: string;
+  uri: string;
+  size?: number;
+}
+
 interface RawDecoderNativeModule {
+  pickWritableDocuments(): Promise<WritableDocumentAsset[]>;
   copyToLibrary(sourceUri: string, destinationUri: string): Promise<string>;
   renameLibraryFile(localUri: string, sourceUri: string | null, fileName: string): Promise<NativeFileRenameResult>;
 }
@@ -19,6 +26,13 @@ function nativeModule(): RawDecoderNativeModule {
     throw new Error("请使用发布后的 Android 构建处理本地文件，Expo Go 不包含文件管理模块。");
   }
   return module;
+}
+
+export async function pickWritableDocuments(): Promise<WritableDocumentAsset[]> {
+  if (Platform.OS !== "android") {
+    throw new Error("可写文件选择器仅在 Android 原生构建中可用。");
+  }
+  return nativeModule().pickWritableDocuments();
 }
 
 export async function copyFileIntoLibrary(sourceUri: string, destinationUri: string): Promise<string> {

@@ -18,9 +18,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
+import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -34,6 +37,52 @@ import kotlin.math.roundToInt
 
 class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactContextBaseJavaModule(appContext) {
   override fun getName() = "RawDecoder"
+  private val pickerRequestCode = 7317
+  private var documentPickerPromise: Promise? = null
+
+  private val documentPickerListener = object : ActivityEventListener {
+    override fun onNewIntent(intent: Intent) = Unit
+
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+      if (requestCode != pickerRequestCode) return
+      val promise = documentPickerPromise ?: return
+      documentPickerPromise = null
+      if (resultCode != Activity.RESULT_OK || data == null) {
+        promise.resolve(Arguments.createArray())
+        return
+      }
+      try {
+        val uris = buildList {
+          data.clipData?.let { clip -> for (index in 0 until clip.itemCount) add(clip.getItemAt(index).uri) }
+          data.data?.let { add(it) }
+        }.distinct()
+        val assets = Arguments.createArray()
+        for (uri in uris) {
+          persistUriPermission(uri)
+          var displayName = "untitled"
+          var fileSize = 0L
+          appContext.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+              cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }?.let { displayName = cursor.getString(it) ?: displayName }
+              cursor.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }?.let { fileSize = cursor.getLong(it) }
+            }
+          }
+          assets.pushMap(Arguments.createMap().apply {
+            putString("name", displayName)
+            putString("uri", uri.toString())
+            putDouble("size", fileSize.toDouble())
+          })
+        }
+        promise.resolve(assets)
+      } catch (error: Exception) {
+        promise.reject("WRITABLE_PICK_FAILED", error.message ?: "Unable to read selected files.", error)
+      }
+    }
+  }
+
+  init {
+    appContext.addActivityEventListener(documentPickerListener)
+  }
 
   private fun persistUriPermission(uri: Uri) {
     if (uri.scheme != "content") return
@@ -50,6 +99,25 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
   private fun inputStreamFor(uri: Uri) = when (uri.scheme) {
     "file" -> File(requireNotNull(uri.path) { "File path is unavailable." }).inputStream()
     else -> requireNotNull(appContext.contentResolver.openInputStream(uri)) { "Unable to read the selected file." }
+  }
+
+  @ReactMethod
+  fun pickWritableDocuments(promise: Promise) {
+    try {
+      check(documentPickerPromise == null) { "A document selection is already active." }
+      val activity = appContext.currentActivity ?: throw IllegalStateException("No Android activity is available for file selection.")
+      documentPickerPromise = promise
+      val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE)
+        type = "*/*"
+        putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+      }
+      activity.startActivityForResult(intent, pickerRequestCode)
+    } catch (error: Exception) {
+      documentPickerPromise = null
+      promise.reject("WRITABLE_PICK_FAILED", error.message ?: "Unable to open the writable file selector.", error)
+    }
   }
 
   @ReactMethod
@@ -77,38 +145,35 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       check(localFile.exists()) { "LOCAL_FILE_MISSING: Import the file again before renaming." }
       val renamedLocalFile = File(requireNotNull(localFile.parentFile), newFileName)
       check(!renamedLocalFile.exists() || renamedLocalFile.canonicalPath == localFile.canonicalPath) { "A file with this name already exists." }
-      check(localFile.renameTo(renamedLocalFile)) { "LOCAL_RENAME_FAILED: Android could not rename the local copy." }
+      check(!sourceUri.isNullOrBlank()) { "SOURCE_RENAME_UNAVAILABLE: Re-import the file using the writable Android file selector." }
+      check(localFile.renameTo(renamedLocalFile)) { "LOCAL_RENAME_FAILED: Android could not rename the app copy." }
 
-      var resolvedSourceUri = sourceUri
-      var sourceRenamed = false
-      var sourceRenameError: String? = null
-      if (!sourceUri.isNullOrBlank()) {
-        try {
-          val source = Uri.parse(sourceUri)
-          persistUriPermission(source)
-          if (source.scheme == "content") {
-            val renamedSource = DocumentsContract.renameDocument(appContext.contentResolver, source, newFileName)
-            if (renamedSource != null) {
-              resolvedSourceUri = renamedSource.toString()
-              sourceRenamed = true
-            }
-          } else if (source.scheme == "file") {
+      val resolvedSourceUri = try {
+        val source = Uri.parse(sourceUri)
+        persistUriPermission(source)
+        when (source.scheme) {
+          "content" -> requireNotNull(DocumentsContract.renameDocument(appContext.contentResolver, source, newFileName)) {
+            "SOURCE_RENAME_DENIED: This document provider does not allow renaming."
+          }.toString()
+          "file" -> {
             val sourceFile = File(requireNotNull(source.path))
-            if (sourceFile.exists() && sourceFile.canonicalPath != localFile.canonicalPath) {
-              sourceRenamed = sourceFile.renameTo(File(requireNotNull(sourceFile.parentFile), newFileName))
-              if (sourceRenamed) resolvedSourceUri = "file://" + File(requireNotNull(sourceFile.parentFile), newFileName).absolutePath
+            if (sourceFile.canonicalPath == localFile.canonicalPath) "file://" + renamedLocalFile.absolutePath else {
+              val renamedSourceFile = File(requireNotNull(sourceFile.parentFile), newFileName)
+              check(sourceFile.renameTo(renamedSourceFile)) { "SOURCE_RENAME_DENIED: Android could not rename the original file." }
+              "file://" + renamedSourceFile.absolutePath
             }
           }
-        } catch (error: Exception) {
-          sourceRenameError = error.message
+          else -> throw IllegalStateException("SOURCE_RENAME_UNAVAILABLE: Unsupported source URI.")
         }
+      } catch (error: Exception) {
+        if (renamedLocalFile.exists() && !localFile.exists()) renamedLocalFile.renameTo(localFile)
+        throw error
       }
 
       val response = Arguments.createMap().apply {
         putString("uri", "file://" + renamedLocalFile.absolutePath)
         putString("sourceUri", resolvedSourceUri)
-        putBoolean("sourceRenamed", sourceRenamed)
-        if (sourceRenameError != null) putString("sourceRenameError", sourceRenameError)
+        putBoolean("sourceRenamed", true)
       }
       promise.resolve(response)
     } catch (error: Exception) {
@@ -291,4 +356,4 @@ function withRawDecoder(config) {
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.1");
+module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.2");

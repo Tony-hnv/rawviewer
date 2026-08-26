@@ -21,6 +21,7 @@ import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { ScreenContainer } from "@/components/screen-container";
+import { pickWritableDocuments } from "@/lib/local-file-bridge";
 import { importAssets, loadLibrary, renameLibraryFile, saveLibrary } from "@/lib/photo-library";
 import { createRawPreview } from "@/lib/raw-preview";
 import {
@@ -123,14 +124,16 @@ export default function LibraryScreen() {
   const handleImport = useCallback(async () => {
     setIsImporting(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: "*/*",
-        multiple: true,
-        copyToCacheDirectory: false,
-      });
-      if (result.canceled) return;
+      const assets = Platform.OS === "android"
+        ? await pickWritableDocuments()
+        : await DocumentPicker.getDocumentAsync({
+            type: "*/*",
+            multiple: true,
+            copyToCacheDirectory: true,
+          }).then((result) => (result.canceled ? [] : result.assets));
+      if (assets.length === 0) return;
 
-      const { imported, skipped } = await importAssets(result.assets);
+      const { imported, skipped } = await importAssets(assets);
       if (imported.length > 0) {
         const nextFiles = [...imported, ...files].sort((a, b) => b.importedAt - a.importedAt);
         setFiles(nextFiles);
