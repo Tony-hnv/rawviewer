@@ -2,6 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -79,6 +80,7 @@ function FileThumbnail({ file, previewUri }: { file: LibraryFile; previewUri?: s
 }
 
 export default function LibraryScreen() {
+  const router = useRouter();
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
@@ -150,10 +152,8 @@ export default function LibraryScreen() {
 
   const openFile = useCallback((file: LibraryFile) => {
     feedback("light");
-    setImageFailed(false);
-    setRenameNotice(null);
-    setSelectedFile(file);
-  }, []);
+    router.push({ pathname: "/detail", params: { id: file.id } });
+  }, [router]);
 
   const closeDetail = useCallback(() => {
     detailOffsetX.value = 0;
@@ -238,7 +238,6 @@ export default function LibraryScreen() {
     try {
       const renamed = await renameLibraryFile(selectedFile, cleanName);
       const nextFiles = files.map((file) => (file.id === renamed.id ? renamed : file));
-      await saveLibrary(nextFiles);
       setFiles(nextFiles);
       setSelectedFile(renamed);
       setIsRenameVisible(false);

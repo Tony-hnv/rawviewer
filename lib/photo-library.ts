@@ -115,11 +115,25 @@ export async function renameLibraryFile(
     throw new Error("重命名结果校验失败，文件库未更新。");
   }
 
-  return {
+  const renamedFile: LibraryFile = {
     ...file,
     fileName: destinationName,
     baseName: getBaseName(destinationName),
     uri: result.uri,
     sourceUri: result.sourceUri ?? file.sourceUri,
   };
+
+  const storedFiles = await loadLibrary();
+  const nextStoredFiles = storedFiles.some((storedFile) => storedFile.id === file.id)
+    ? storedFiles.map((storedFile) => (storedFile.id === file.id ? renamedFile : storedFile))
+    : [...storedFiles, renamedFile];
+  await saveLibrary(nextStoredFiles);
+
+  const verifiedFiles = await loadLibrary();
+  const verifiedFile = verifiedFiles.find((storedFile) => storedFile.id === file.id);
+  if (!verifiedFile || verifiedFile.fileName !== destinationName || verifiedFile.uri !== result.uri) {
+    throw new Error("重命名已执行，但文件库记录未能保存。请重新打开应用后重试。");
+  }
+
+  return verifiedFile;
 }
