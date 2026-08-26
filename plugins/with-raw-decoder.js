@@ -16,6 +16,9 @@ const rawDecoderModule = `package com.rawview.rawdecoder
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
 import android.net.Uri
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -31,25 +34,29 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
   override fun getName() = "RawDecoder"
 
   private fun createEncodablePreview(decodedBitmap: Bitmap): Bitmap {
-    val softwareBitmap = if (decodedBitmap.config == Bitmap.Config.HARDWARE) {
+    val sourceBitmap = if (decodedBitmap.config == Bitmap.Config.HARDWARE) {
       decodedBitmap.copy(Bitmap.Config.ARGB_8888, false)
         ?: throw IllegalStateException("Unable to copy RAW bitmap for preview encoding.")
     } else {
       decodedBitmap
     }
 
-    val maxPreviewEdge = 2048
-    val longestEdge = maxOf(softwareBitmap.width, softwareBitmap.height)
-    if (longestEdge <= maxPreviewEdge) return softwareBitmap
-
-    val scale = maxPreviewEdge.toFloat() / longestEdge.toFloat()
-    val targetWidth = (softwareBitmap.width * scale).roundToInt().coerceAtLeast(1)
-    val targetHeight = (softwareBitmap.height * scale).roundToInt().coerceAtLeast(1)
-    val scaledBitmap = Bitmap.createScaledBitmap(softwareBitmap, targetWidth, targetHeight, true)
-    if (softwareBitmap !== decodedBitmap) {
-      softwareBitmap.recycle()
+    try {
+      val maxPreviewEdge = 1600
+      val longestEdge = maxOf(sourceBitmap.width, sourceBitmap.height)
+      val scale = minOf(1f, maxPreviewEdge.toFloat() / longestEdge.toFloat())
+      val targetWidth = (sourceBitmap.width * scale).roundToInt().coerceAtLeast(1)
+      val targetHeight = (sourceBitmap.height * scale).roundToInt().coerceAtLeast(1)
+      val softwarePreview = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(softwarePreview)
+      val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+      canvas.drawBitmap(sourceBitmap, null, Rect(0, 0, targetWidth, targetHeight), paint)
+      return softwarePreview
+    } finally {
+      if (sourceBitmap !== decodedBitmap) {
+        sourceBitmap.recycle()
+      }
     }
-    return scaledBitmap
   }
 
   @ReactMethod
@@ -75,11 +82,15 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       }
       val previewBitmap = createEncodablePreview(decodedBitmap)
       val outputFile = File(appContext.cacheDir, "raw-preview-\${UUID.randomUUID()}.png")
+      val temporaryFile = File(appContext.cacheDir, "raw-preview-\${UUID.randomUUID()}.tmp")
       try {
-        FileOutputStream(outputFile).use { stream ->
-          check(previewBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "Unable to encode RAW preview as PNG." }
+        FileOutputStream(temporaryFile).use { stream ->
+          check(previewBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "RAW_PREVIEW_WRITE_FAILED: PNG encoding returned false." }
         }
+        check(temporaryFile.length() > 0L) { "RAW_PREVIEW_WRITE_FAILED: PNG output is empty." }
+        check(temporaryFile.renameTo(outputFile)) { "RAW_PREVIEW_WRITE_FAILED: Unable to finalize preview cache." }
       } finally {
+        if (temporaryFile.exists()) temporaryFile.delete()
         if (previewBitmap !== decodedBitmap) {
           previewBitmap.recycle()
         }

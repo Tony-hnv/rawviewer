@@ -30,6 +30,9 @@ export async function createRawPreview(sourceUri: string): Promise<string> {
     if (message.includes("Expo Go") || message.includes("doesn't seem to be linked")) {
       throw new Error("请使用最新发布的 Android 构建打开此文件，Expo Go 不包含 LibRaw 解码器。");
     }
+    if (message.includes("RAW_PREVIEW_WRITE_FAILED")) {
+      throw new Error("RAW 图像已解码，但预览缓存写入失败。请确认设备有可用存储空间后重试。");
+    }
     throw new Error(message);
   }
 }
