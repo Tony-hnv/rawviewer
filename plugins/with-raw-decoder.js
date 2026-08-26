@@ -15,7 +15,6 @@ const LIBRAW_DEPENDENCY = 'implementation("com.github.dburckh:AndroidLibRaw:2.0.
 const rawDecoderModule = `package com.rawview.rawdecoder
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
@@ -33,30 +32,31 @@ import kotlin.math.roundToInt
 class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactContextBaseJavaModule(appContext) {
   override fun getName() = "RawDecoder"
 
-  private fun createEncodablePreview(decodedBitmap: Bitmap): Bitmap {
-    val sourceBitmap = if (decodedBitmap.config == Bitmap.Config.HARDWARE) {
-      decodedBitmap.copy(Bitmap.Config.ARGB_8888, false)
-        ?: throw IllegalStateException("Unable to copy RAW bitmap for preview encoding.")
-    } else {
-      decodedBitmap
+  private fun decodeSoftwareBitmap(sourcePath: String): Bitmap {
+    return LibRaw().use { decoder ->
+      val openStatus = decoder.open(sourcePath)
+      check(openStatus == 0) { "RAW_OPEN_FAILED: \$openStatus" }
+      decoder.setQuality(3)
+      decoder.setHalfSize(false)
+      decoder.setOutputColorSpace(LibRaw.COLORSPACE_SRGB)
+      decoder.setOutputBps(8)
+      val processStatus = decoder.dcrawProcess()
+      check(processStatus == 0) { "RAW_PROCESS_FAILED: \$processStatus" }
+      decoder.getMutableBitmap(Bitmap.Config.ARGB_8888)
     }
+  }
 
-    try {
-      val maxPreviewEdge = 1600
-      val longestEdge = maxOf(sourceBitmap.width, sourceBitmap.height)
-      val scale = minOf(1f, maxPreviewEdge.toFloat() / longestEdge.toFloat())
-      val targetWidth = (sourceBitmap.width * scale).roundToInt().coerceAtLeast(1)
-      val targetHeight = (sourceBitmap.height * scale).roundToInt().coerceAtLeast(1)
-      val softwarePreview = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
-      val canvas = Canvas(softwarePreview)
-      val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
-      canvas.drawBitmap(sourceBitmap, null, Rect(0, 0, targetWidth, targetHeight), paint)
-      return softwarePreview
-    } finally {
-      if (sourceBitmap !== decodedBitmap) {
-        sourceBitmap.recycle()
-      }
-    }
+  private fun createEncodablePreview(decodedBitmap: Bitmap): Bitmap {
+    val maxPreviewEdge = 1600
+    val longestEdge = maxOf(decodedBitmap.width, decodedBitmap.height)
+    val scale = minOf(1f, maxPreviewEdge.toFloat() / longestEdge.toFloat())
+    val targetWidth = (decodedBitmap.width * scale).roundToInt().coerceAtLeast(1)
+    val targetHeight = (decodedBitmap.height * scale).roundToInt().coerceAtLeast(1)
+    val softwarePreview = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(softwarePreview)
+    val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+    canvas.drawBitmap(decodedBitmap, null, Rect(0, 0, targetWidth, targetHeight), paint)
+    return softwarePreview
   }
 
   @ReactMethod
@@ -74,28 +74,25 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
         importedCopy
       }
 
-      val options = BitmapFactory.Options().apply {
-        inPreferredConfig = Bitmap.Config.ARGB_8888
-      }
-      val decodedBitmap = LibRaw().use { decoder ->
-        decoder.decodeBitmap(sourceFile.absolutePath, options)
-      }
-      val previewBitmap = createEncodablePreview(decodedBitmap)
-      val outputFile = File(appContext.cacheDir, "raw-preview-\${UUID.randomUUID()}.png")
-      val temporaryFile = File(appContext.cacheDir, "raw-preview-\${UUID.randomUUID()}.tmp")
+      val decodedBitmap = decodeSoftwareBitmap(sourceFile.absolutePath)
       try {
-        FileOutputStream(temporaryFile).use { stream ->
-          check(previewBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "RAW_PREVIEW_WRITE_FAILED: PNG encoding returned false." }
-        }
-        check(temporaryFile.length() > 0L) { "RAW_PREVIEW_WRITE_FAILED: PNG output is empty." }
-        check(temporaryFile.renameTo(outputFile)) { "RAW_PREVIEW_WRITE_FAILED: Unable to finalize preview cache." }
-      } finally {
-        if (temporaryFile.exists()) temporaryFile.delete()
-        if (previewBitmap !== decodedBitmap) {
+        val previewBitmap = createEncodablePreview(decodedBitmap)
+        val outputFile = File(appContext.cacheDir, "raw-preview-\${UUID.randomUUID()}.png")
+        val temporaryFile = File(appContext.cacheDir, "raw-preview-\${UUID.randomUUID()}.tmp")
+        try {
+          FileOutputStream(temporaryFile).use { stream ->
+            check(previewBitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) { "RAW_PREVIEW_WRITE_FAILED: PNG encoding returned false." }
+          }
+          check(temporaryFile.length() > 0L) { "RAW_PREVIEW_WRITE_FAILED: PNG output is empty." }
+          check(temporaryFile.renameTo(outputFile)) { "RAW_PREVIEW_WRITE_FAILED: Unable to finalize preview cache." }
+          promise.resolve("file://\${outputFile.absolutePath}")
+        } finally {
+          if (temporaryFile.exists()) temporaryFile.delete()
           previewBitmap.recycle()
         }
+      } finally {
+        decodedBitmap.recycle()
       }
-      promise.resolve("file://\${outputFile.absolutePath}")
     } catch (error: Exception) {
       promise.reject("RAW_DECODE_FAILED", error.message ?: "Unable to decode RAW file.", error)
     }

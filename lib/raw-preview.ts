@@ -33,6 +33,9 @@ export async function createRawPreview(sourceUri: string): Promise<string> {
     if (message.includes("RAW_PREVIEW_WRITE_FAILED")) {
       throw new Error("RAW 图像已解码，但预览缓存写入失败。请确认设备有可用存储空间后重试。");
     }
+    if (message.includes("RAW_OPEN_FAILED") || message.includes("RAW_PROCESS_FAILED")) {
+      throw new Error("该 RAW 文件无法由当前 LibRaw 解码器处理。请稍后尝试新的兼容性版本。");
+    }
     throw new Error(message);
   }
 }
