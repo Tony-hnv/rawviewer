@@ -145,35 +145,48 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       check(localFile.exists()) { "LOCAL_FILE_MISSING: Import the file again before renaming." }
       val renamedLocalFile = File(requireNotNull(localFile.parentFile), newFileName)
       check(!renamedLocalFile.exists() || renamedLocalFile.canonicalPath == localFile.canonicalPath) { "A file with this name already exists." }
-      check(!sourceUri.isNullOrBlank()) { "SOURCE_RENAME_UNAVAILABLE: Re-import the file using the writable Android file selector." }
       check(localFile.renameTo(renamedLocalFile)) { "LOCAL_RENAME_FAILED: Android could not rename the app copy." }
 
-      val resolvedSourceUri = try {
-        val source = Uri.parse(sourceUri)
-        persistUriPermission(source)
-        when (source.scheme) {
-          "content" -> requireNotNull(DocumentsContract.renameDocument(appContext.contentResolver, source, newFileName)) {
-            "SOURCE_RENAME_DENIED: This document provider does not allow renaming."
-          }.toString()
-          "file" -> {
-            val sourceFile = File(requireNotNull(source.path))
-            if (sourceFile.canonicalPath == localFile.canonicalPath) "file://" + renamedLocalFile.absolutePath else {
-              val renamedSourceFile = File(requireNotNull(sourceFile.parentFile), newFileName)
-              check(sourceFile.renameTo(renamedSourceFile)) { "SOURCE_RENAME_DENIED: Android could not rename the original file." }
-              "file://" + renamedSourceFile.absolutePath
+      var resolvedSourceUri = sourceUri
+      var sourceRenamed = false
+      var sourceRenameError: String? = null
+      if (!sourceUri.isNullOrBlank()) {
+        try {
+          val source = Uri.parse(sourceUri)
+          persistUriPermission(source)
+          when (source.scheme) {
+            "content" -> {
+              val renamedSource = DocumentsContract.renameDocument(appContext.contentResolver, source, newFileName)
+              if (renamedSource != null) {
+                resolvedSourceUri = renamedSource.toString()
+                sourceRenamed = true
+              } else {
+                sourceRenameError = "原文件提供方不支持改名；已仅更新应用本地副本。"
+              }
             }
+            "file" -> {
+              val sourceFile = File(requireNotNull(source.path))
+              if (sourceFile.canonicalPath == localFile.canonicalPath) {
+                resolvedSourceUri = "file://" + renamedLocalFile.absolutePath
+                sourceRenamed = true
+              } else {
+                val renamedSourceFile = File(requireNotNull(sourceFile.parentFile), newFileName)
+                sourceRenamed = sourceFile.renameTo(renamedSourceFile)
+                if (sourceRenamed) resolvedSourceUri = "file://" + renamedSourceFile.absolutePath else sourceRenameError = "Android 未允许同步改名原文件；已仅更新应用本地副本。"
+              }
+            }
+            else -> sourceRenameError = "原文件 URI 不支持改名；已仅更新应用本地副本。"
           }
-          else -> throw IllegalStateException("SOURCE_RENAME_UNAVAILABLE: Unsupported source URI.")
+        } catch (error: Exception) {
+          sourceRenameError = error.message ?: "原文件提供方不支持改名；已仅更新应用本地副本。"
         }
-      } catch (error: Exception) {
-        if (renamedLocalFile.exists() && !localFile.exists()) renamedLocalFile.renameTo(localFile)
-        throw error
       }
 
       val response = Arguments.createMap().apply {
         putString("uri", "file://" + renamedLocalFile.absolutePath)
         putString("sourceUri", resolvedSourceUri)
-        putBoolean("sourceRenamed", true)
+        putBoolean("sourceRenamed", sourceRenamed)
+        if (sourceRenameError != null) putString("sourceRenameError", sourceRenameError)
       }
       promise.resolve(response)
     } catch (error: Exception) {
@@ -356,4 +369,4 @@ function withRawDecoder(config) {
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.2");
+module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.3");

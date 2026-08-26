@@ -2,7 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Image } from "expo-image";
 import { useCallback, useMemo, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 export function ZoomableImage({ uri }: { uri: string }) {
@@ -44,7 +44,7 @@ export function ZoomableImage({ uri }: { uri: string }) {
         }
       })
       .onEnd(() => { baseOffsetX.value = offsetX.value; baseOffsetY.value = offsetY.value; }),
-    Gesture.Tap().numberOfTaps(2).onEnd(() => {
+    Gesture.Tap().numberOfTaps(2).maxDelay(300).shouldCancelWhenOutside(false).onEnd(() => {
       scale.value = withTiming(1, { duration: 160 });
       baseScale.value = 1;
       offsetX.value = withTiming(0, { duration: 160 });
@@ -61,25 +61,28 @@ export function ZoomableImage({ uri }: { uri: string }) {
         <View style={styles.cue} pointerEvents="none"><MaterialIcons name="zoom-in" size={15} color="#DDE3E6" /><Text style={styles.cueText}>点击放大</Text></View>
       </Pressable>
       <Modal visible={isOpen} transparent animationType="fade" onRequestClose={() => setIsOpen(false)}>
-        <View style={styles.backdrop}>
-          <GestureDetector gesture={zoomGesture}>
-            <View style={styles.canvas}>
-              <Animated.View style={[styles.imageWrapper, transformStyle]}>
-                <Image source={{ uri }} style={styles.fullImage} contentFit="contain" />
-              </Animated.View>
+        <GestureHandlerRootView style={styles.flex}>
+          <View style={styles.backdrop}>
+            <GestureDetector gesture={zoomGesture}>
+              <View style={styles.canvas} collapsable={false}>
+                <Animated.View style={[styles.imageWrapper, transformStyle]}>
+                  <Image source={{ uri }} style={styles.fullImage} contentFit="contain" />
+                </Animated.View>
+              </View>
+            </GestureDetector>
+            <View style={styles.toolbar} pointerEvents="box-none">
+              <View style={styles.hint}><MaterialIcons name="pinch" size={16} color="#DDE3E6" /><Text style={styles.hintText}>双指缩放 · 单指拖动 · 双击复位</Text></View>
+              <Pressable onPress={() => setIsOpen(false)} style={styles.closeButton} accessibilityLabel="关闭放大图片"><MaterialIcons name="close" size={24} color="#F4F1EA" /></Pressable>
             </View>
-          </GestureDetector>
-          <View style={styles.toolbar} pointerEvents="box-none">
-            <View style={styles.hint}><MaterialIcons name="pinch" size={16} color="#DDE3E6" /><Text style={styles.hintText}>双指缩放 · 单指拖动 · 双击复位</Text></View>
-            <Pressable onPress={() => setIsOpen(false)} style={styles.closeButton} accessibilityLabel="关闭放大图片"><MaterialIcons name="close" size={24} color="#F4F1EA" /></Pressable>
           </View>
-        </View>
+        </GestureHandlerRootView>
       </Modal>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   previewPressable: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
   previewImage: { width: "100%", height: "100%" },
   cue: { position: "absolute", right: 12, bottom: 12, borderRadius: 14, backgroundColor: "rgba(17,22,28,0.76)", paddingHorizontal: 9, paddingVertical: 6, flexDirection: "row", alignItems: "center", gap: 4 },
