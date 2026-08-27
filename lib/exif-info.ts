@@ -3,6 +3,7 @@ export type ExifReadStatus = "available" | "unavailable" | "unsupported";
 export interface ExifInfo {
   status: ExifReadStatus;
   message: string;
+  metadataSource?: "standard_exif" | "raw_vendor";
   make?: string;
   model?: string;
   lensModel?: string;
@@ -43,6 +44,9 @@ export function getExifDisplayRows(exif: ExifInfo): ExifDisplayRow[] {
     exif.width && exif.height ? `${exif.width} × ${exif.height} px` : undefined;
 
   return [
+    exif.metadataSource === "raw_vendor"
+      ? { label: "数据来源", value: "厂商 RAW 元数据" }
+      : null,
     camera ? { label: "相机", value: camera } : null,
     exif.lensModel ? { label: "镜头", value: exif.lensModel } : null,
     exif.dateTime ? { label: "拍摄时间", value: exif.dateTime } : null,
@@ -59,6 +63,74 @@ export function getExifDisplayRows(exif: ExifInfo): ExifDisplayRow[] {
       ? { label: "方向", value: `EXIF ${exif.orientation}` }
       : null,
   ].filter((row): row is ExifDisplayRow => row !== null);
+}
+
+export function createExifShareText(fileName: string, exif: ExifInfo): string {
+  const rows = getExifDisplayRows(exif);
+  const detailLines =
+    rows.length > 0
+      ? rows.map((row) => `${row.label}：${row.value}`)
+      : ["没有可显示的拍摄参数"];
+  return [
+    "RAW View EXIF 信息",
+    `文件：${fileName}`,
+    "",
+    ...detailLines,
+    "",
+    exif.message,
+  ].join("\n");
+}
+
+export async function copyExifInfo(
+  fileName: string,
+  exif: ExifInfo,
+): Promise<void> {
+  const Clipboard = require("expo-clipboard") as {
+    setStringAsync(value: string): Promise<boolean>;
+  };
+  await Clipboard.setStringAsync(createExifShareText(fileName, exif));
+}
+
+export async function shareExifInfo(
+  fileName: string,
+  exif: ExifInfo,
+): Promise<void> {
+  const FileSystem = require("expo-file-system/legacy") as {
+    cacheDirectory: string | null;
+    EncodingType: { UTF8: string };
+    writeAsStringAsync(
+      uri: string,
+      contents: string,
+      options: { encoding: string },
+    ): Promise<void>;
+  };
+  const Sharing = require("expo-sharing") as {
+    isAvailableAsync(): Promise<boolean>;
+    shareAsync(
+      uri: string,
+      options: { dialogTitle: string; mimeType: string },
+    ): Promise<void>;
+  };
+  if (!(await Sharing.isAvailableAsync())) {
+    throw new Error("当前设备不支持系统分享。请改用复制 EXIF 信息。");
+  }
+  if (!FileSystem.cacheDirectory) {
+    throw new Error("无法创建 EXIF 分享文件。请稍后重试。");
+  }
+  const safeName =
+    fileName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48) || "photo";
+  const uri = `${FileSystem.cacheDirectory}raw-view-exif-${safeName}.txt`;
+  await FileSystem.writeAsStringAsync(
+    uri,
+    createExifShareText(fileName, exif),
+    {
+      encoding: FileSystem.EncodingType.UTF8,
+    },
+  );
+  await Sharing.shareAsync(uri, {
+    dialogTitle: "分享 EXIF 信息",
+    mimeType: "text/plain",
+  });
 }
 
 export async function readExifInfo(localUri: string): Promise<ExifInfo> {

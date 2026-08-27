@@ -12,6 +12,7 @@ const path = require("path");
 const PACKAGE_IMPORT = "com.rawview.rawdecoder.RawDecoderPackage";
 const LIBRAW_DEPENDENCY = 'implementation("com.github.dburckh:AndroidLibRaw:2.0.7")';
 const EXIF_DEPENDENCY = 'implementation("androidx.exifinterface:exifinterface:1.3.7")';
+const METADATA_EXTRACTOR_DEPENDENCY = 'implementation("com.drewnoakes:metadata-extractor:2.21.0")';
 
 const rawDecoderModule = `package com.rawview.rawdecoder
 
@@ -25,6 +26,8 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import androidx.exifinterface.media.ExifInterface
+import com.drew.imaging.ImageMetadataReader
+import com.drew.metadata.Metadata
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -138,6 +141,34 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
 
   private fun isRawFile(file: File): Boolean = file.extension.lowercase() in setOf("arw", "cr2", "cr3", "nef", "rw2")
 
+  private fun rawMetadataValue(metadata: Metadata, vararg tagNames: String): String? {
+    for (directory in metadata.directories) {
+      for (tag in directory.tags) {
+        if (tag.tagName in tagNames) {
+          val value = tag.description?.trim()
+          if (!value.isNullOrEmpty()) return value
+        }
+      }
+    }
+    return null
+  }
+
+  private fun metadataNumber(value: String?): Double {
+    val text = value?.trim() ?: return 0.0
+    val fraction = Regex("""(-?\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)""").find(text)
+    if (fraction != null) {
+      val numerator = fraction.groupValues[1].toDoubleOrNull() ?: return 0.0
+      val denominator = fraction.groupValues[2].toDoubleOrNull() ?: return 0.0
+      if (denominator != 0.0) return numerator / denominator
+    }
+    return Regex("""-?\d+(?:\.\d+)?""").find(text)?.value?.toDoubleOrNull() ?: 0.0
+  }
+
+  private fun normalizedExposure(value: String?): String? {
+    if (value.isNullOrBlank()) return null
+    return value.replace(" seconds", " s").replace(" second", " s").replace(" sec", " s")
+  }
+
   private fun formatExifDate(value: String?): String? {
     if (value.isNullOrBlank()) return null
     if (value.length < 10 || value[4] != ':' || value[7] != ':') return value
@@ -149,15 +180,6 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
     try {
       val localFile = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
       check(localFile.exists()) { "EXIF_SOURCE_MISSING: The local copy is no longer available." }
-      if (isRawFile(localFile)) {
-        promise.resolve(Arguments.createMap().apply {
-          putString("status", "unsupported")
-          putString("message", "当前版本可预览此 RAW 文件，但其厂商元数据暂不支持直接读取。")
-        })
-        return
-      }
-
-      val exif = ExifInterface(localFile.absolutePath)
       val result = Arguments.createMap()
       var fieldCount = 0
       fun putText(key: String, value: String?) {
@@ -176,6 +198,33 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
         fieldCount += 1
       }
 
+      if (isRawFile(localFile)) {
+        val metadata = ImageMetadataReader.readMetadata(localFile)
+        putText("make", rawMetadataValue(metadata, "Make", "Camera Make"))
+        putText("model", rawMetadataValue(metadata, "Model", "Camera Model"))
+        putText("lensModel", rawMetadataValue(metadata, "Lens Model", "Lens Type", "Lens"))
+        putText("dateTime", formatExifDate(rawMetadataValue(metadata, "Date/Time Original", "Date/Time", "Date Created")))
+        putNumber("focalLength", metadataNumber(rawMetadataValue(metadata, "Focal Length", "Focal Length 35")))
+        putNumber("aperture", metadataNumber(rawMetadataValue(metadata, "F-Number", "Aperture Value", "Max Aperture Value")))
+        putText("exposureTime", normalizedExposure(rawMetadataValue(metadata, "Exposure Time", "Shutter Speed Value")))
+        putInteger("iso", metadataNumber(rawMetadataValue(metadata, "ISO Speed Ratings", "Photographic Sensitivity", "ISO" )).roundToInt())
+        putInteger("width", metadataNumber(rawMetadataValue(metadata, "Image Width", "Exif Image Width", "Raw Image Width" )).roundToInt())
+        putInteger("height", metadataNumber(rawMetadataValue(metadata, "Image Height", "Exif Image Height", "Raw Image Height" )).roundToInt())
+        putInteger("orientation", metadataNumber(rawMetadataValue(metadata, "Orientation" )).roundToInt())
+        result.putString("metadataSource", "raw_vendor")
+        if (fieldCount > 0) {
+          result.putString("status", "available")
+          result.putString("message", "已读取可用的厂商 RAW 元数据。")
+        } else {
+          result.putString("status", "unavailable")
+          result.putString("message", "此 RAW 文件未包含可读取的厂商拍摄参数。")
+        }
+        promise.resolve(result)
+        return
+      }
+
+      val exif = ExifInterface(localFile.absolutePath)
+
       putText("make", exif.getAttribute(ExifInterface.TAG_MAKE))
       putText("model", exif.getAttribute(ExifInterface.TAG_MODEL))
       putText("lensModel", exif.getAttribute(ExifInterface.TAG_LENS_MODEL))
@@ -189,6 +238,7 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       putInteger("orientation", exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0))
 
       if (fieldCount > 0) {
+        result.putString("metadataSource", "standard_exif")
         result.putString("status", "available")
         result.putString("message", "已读取可用的 EXIF 与图像信息。")
       } else {
@@ -414,7 +464,7 @@ function addJitPackRepository(contents) {
 }
 
 function addNativeDependency(contents) {
-  const dependencies = [LIBRAW_DEPENDENCY, EXIF_DEPENDENCY].filter(
+  const dependencies = [LIBRAW_DEPENDENCY, EXIF_DEPENDENCY, METADATA_EXTRACTOR_DEPENDENCY].filter(
     (dependency) => !contents.includes(dependency),
   );
   if (dependencies.length === 0) return contents;
@@ -539,4 +589,4 @@ function withRawDecoder(config) {
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.6");
+module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.7");

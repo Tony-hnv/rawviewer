@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getExifDisplayRows } from "../lib/exif-info";
+import { createExifShareText, getExifDisplayRows } from "../lib/exif-info";
 
 describe("getExifDisplayRows", () => {
   it("formats camera metadata into concise display rows", () => {
@@ -37,5 +37,17 @@ describe("getExifDisplayRows", () => {
     expect(
       getExifDisplayRows({ status: "unavailable", message: "没有 EXIF。" }),
     ).toEqual([]);
+  });
+
+  it("creates a readable text payload for copying and sharing", () => {
+    expect(
+      createExifShareText("DSC0001.ARW", {
+        status: "available",
+        message: "已读取可用的 EXIF 与图像信息。",
+        make: "Sony",
+        model: "ILCE-7M4",
+        metadataSource: "raw_vendor",
+      }),
+    ).toContain("数据来源：厂商 RAW 元数据\n相机：Sony ILCE-7M4");
   });
 });
