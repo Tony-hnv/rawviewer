@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import type { DocumentPickerAsset } from "expo-document-picker";
 
-import { copyFileIntoLibrary, renameLibraryCopy } from "@/lib/local-file-bridge";
+import { copyFileIntoLibrary, exportLibraryCopy, renameLibraryCopy } from "@/lib/local-file-bridge";
 
 import {
   type LibraryFile,
@@ -102,18 +102,19 @@ export async function importAssets(assets: ImportAsset[]): Promise<{
 export async function renameLibraryFile(
   file: LibraryFile,
   requestedBaseName: string,
-): Promise<LibraryFile> {
+): Promise<{ file: LibraryFile; sourceRenamed: boolean; sourceRenameError?: string | null }> {
   await ensureLibraryDirectory();
   const requestedName = createFileName(requestedBaseName, file.extension as SupportedExtension);
-  if (requestedName === file.fileName) return file;
+  if (requestedName === file.fileName) {
+    return { file, sourceRenamed: file.renameSyncStatus === "original_and_copy" };
+  }
 
   const destinationName = await getAvailableFileName(requestedName, file.uri);
   const destination = `${LIBRARY_DIRECTORY}${destinationName}`;
   const result = await renameLibraryCopy(file.uri, file.sourceUri, destinationName);
   const renamedInfo = await FileSystem.getInfoAsync(result.uri);
-  const previousInfo = await FileSystem.getInfoAsync(file.uri);
   const renamedSize = renamedInfo.exists ? renamedInfo.size ?? 0 : 0;
-  if (!renamedInfo.exists || (file.size > 0 && renamedSize !== file.size) || previousInfo.exists) {
+  if (!renamedInfo.exists || (file.size > 0 && renamedSize !== file.size)) {
     throw new Error("重命名结果校验失败，文件库未更新。");
   }
 
@@ -122,7 +123,8 @@ export async function renameLibraryFile(
     fileName: destinationName,
     baseName: getBaseName(destinationName),
     uri: result.uri,
-    sourceUri: result.sourceUri ?? file.sourceUri,
+    sourceUri: result.sourceRenamed && result.sourceUri ? result.sourceUri : file.sourceUri,
+    renameSyncStatus: result.sourceRenamed ? "original_and_copy" : "copy_only",
   };
 
   const storedFiles = await loadLibrary();
@@ -137,5 +139,13 @@ export async function renameLibraryFile(
     throw new Error("重命名已执行，但文件库记录未能保存。请重新打开应用后重试。");
   }
 
-  return verifiedFile;
+  return {
+    file: verifiedFile,
+    sourceRenamed: Boolean(result.sourceRenamed),
+    sourceRenameError: result.sourceRenameError,
+  };
+}
+
+export async function exportLibraryFile(file: LibraryFile): Promise<string | null> {
+  return exportLibraryCopy(file.uri, file.fileName);
 }

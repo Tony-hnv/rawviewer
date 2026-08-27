@@ -18,6 +18,7 @@ interface RawDecoderNativeModule {
   pickWritableDocuments(): Promise<WritableDocumentAsset[]>;
   copyToLibrary(sourceUri: string, destinationUri: string): Promise<string>;
   renameLibraryFile(localUri: string, sourceUri: string | null, fileName: string): Promise<NativeFileRenameResult>;
+  exportLibraryFile(localUri: string, fileName: string): Promise<string | null>;
 }
 
 function nativeModule(): RawDecoderNativeModule {
@@ -56,4 +57,11 @@ export async function renameLibraryCopy(
   const destinationUri = localUri.slice(0, -currentPath.length) + fileName;
   await FileSystem.moveAsync({ from: localUri, to: destinationUri });
   return { uri: destinationUri, sourceUri, sourceRenamed: false };
+}
+
+export async function exportLibraryCopy(localUri: string, fileName: string): Promise<string | null> {
+  if (Platform.OS !== "android") {
+    throw new Error("导出到指定文件夹仅在 Android 原生构建中可用。");
+  }
+  return nativeModule().exportLibraryFile(localUri, fileName);
 }

@@ -9,6 +9,7 @@ export type SupportedExtension =
   | "jpeg";
 
 export type MediaKind = "raw" | "image";
+export type RenameSyncStatus = "original_and_copy" | "copy_only";
 
 export type CameraBrand = "Sony" | "Canon" | "Nikon" | "Panasonic" | "Image";
 
@@ -21,6 +22,7 @@ export interface LibraryFile {
   brand: CameraBrand;
   uri: string;
   sourceUri?: string;
+  renameSyncStatus?: RenameSyncStatus;
   size: number;
   importedAt: number;
 }

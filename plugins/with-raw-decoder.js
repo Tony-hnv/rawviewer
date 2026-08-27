@@ -38,12 +38,45 @@ import kotlin.math.roundToInt
 class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactContextBaseJavaModule(appContext) {
   override fun getName() = "RawDecoder"
   private val pickerRequestCode = 7317
+  private val exportRequestCode = 7318
   private var documentPickerPromise: Promise? = null
+  private var exportPromise: Promise? = null
+  private var exportLocalUri: String? = null
+  private var exportFileName: String? = null
 
   private val documentPickerListener = object : ActivityEventListener {
     override fun onNewIntent(intent: Intent) = Unit
 
     override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+      if (requestCode == exportRequestCode) {
+        val promise = exportPromise ?: return
+        exportPromise = null
+        val localUri = exportLocalUri
+        val fileName = exportFileName
+        exportLocalUri = null
+        exportFileName = null
+        if (resultCode != Activity.RESULT_OK || data?.data == null || localUri == null || fileName == null) {
+          promise.resolve(null)
+          return
+        }
+        try {
+          val treeUri = data.data!!
+          persistUriPermission(treeUri)
+          val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, DocumentsContract.getTreeDocumentId(treeUri))
+          val outputUri = requireNotNull(DocumentsContract.createDocument(appContext.contentResolver, parentUri, "application/octet-stream", fileName)) {
+            "EXPORT_CREATE_FAILED: The selected folder did not allow creating the file."
+          }
+          val localFile = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
+          check(localFile.exists()) { "EXPORT_SOURCE_MISSING: The local copy is no longer available." }
+          localFile.inputStream().use { input ->
+            requireNotNull(appContext.contentResolver.openOutputStream(outputUri, "w")) { "EXPORT_WRITE_FAILED: Cannot write to selected folder." }.use { output -> input.copyTo(output) }
+          }
+          promise.resolve(outputUri.toString())
+        } catch (error: Exception) {
+          promise.reject("EXPORT_FAILED", error.message ?: "Unable to export local copy.", error)
+        }
+        return
+      }
       if (requestCode != pickerRequestCode) return
       val promise = documentPickerPromise ?: return
       documentPickerPromise = null
@@ -145,7 +178,13 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       check(localFile.exists()) { "LOCAL_FILE_MISSING: Import the file again before renaming." }
       val renamedLocalFile = File(requireNotNull(localFile.parentFile), newFileName)
       check(!renamedLocalFile.exists() || renamedLocalFile.canonicalPath == localFile.canonicalPath) { "A file with this name already exists." }
-      check(localFile.renameTo(renamedLocalFile)) { "LOCAL_RENAME_FAILED: Android could not rename the app copy." }
+      val renamed = localFile.renameTo(renamedLocalFile)
+      if (!renamed) {
+        localFile.inputStream().use { input -> renamedLocalFile.outputStream().use { output -> input.copyTo(output) } }
+        check(renamedLocalFile.exists() && renamedLocalFile.length() == localFile.length()) { "LOCAL_RENAME_FAILED: Android could not create a verified local copy." }
+        check(localFile.delete()) { "LOCAL_RENAME_FAILED: Android could not remove the old local copy." }
+      }
+      check(renamedLocalFile.exists() && renamedLocalFile.name == newFileName) { "LOCAL_RENAME_FAILED: The local copy name did not update." }
 
       var resolvedSourceUri = sourceUri
       var sourceRenamed = false
@@ -191,6 +230,26 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       promise.resolve(response)
     } catch (error: Exception) {
       promise.reject("LOCAL_RENAME_FAILED", error.message ?: "Unable to rename local file.", error)
+    }
+  }
+
+  @ReactMethod
+  fun exportLibraryFile(localUri: String, fileName: String, promise: Promise) {
+    try {
+      check(exportPromise == null) { "An export folder selection is already active." }
+      val activity = appContext.currentActivity ?: throw IllegalStateException("No Android activity is available for folder selection.")
+      exportPromise = promise
+      exportLocalUri = localUri
+      exportFileName = fileName
+      val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+      }
+      activity.startActivityForResult(intent, exportRequestCode)
+    } catch (error: Exception) {
+      exportPromise = null
+      exportLocalUri = null
+      exportFileName = null
+      promise.reject("EXPORT_PICK_FAILED", error.message ?: "Unable to open folder selector.", error)
     }
   }
 
@@ -369,4 +428,4 @@ function withRawDecoder(config) {
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.3");
+module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.4");

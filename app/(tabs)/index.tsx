@@ -239,12 +239,13 @@ export default function LibraryScreen() {
 
     setIsRenaming(true);
     try {
-      const renamed = await renameLibraryFile(selectedFile, cleanName);
+      const outcome = await renameLibraryFile(selectedFile, cleanName);
+      const renamed = outcome.file;
       const nextFiles = files.map((file) => (file.id === renamed.id ? renamed : file));
       setFiles(nextFiles);
       setSelectedFile(renamed);
       setIsRenameVisible(false);
-      setRenameNotice(`已重命名为 ${renamed.fileName}`);
+      setRenameNotice(outcome.sourceRenamed ? `已同步改名为 ${renamed.fileName}` : `已改本地副本为 ${renamed.fileName}`);
       feedback("success");
     } catch (error) {
       const message = error instanceof Error ? error.message : "文件可能正在被其他应用使用，或设备存储空间不足。";
@@ -407,7 +408,7 @@ export default function LibraryScreen() {
                 <Text style={styles.fileCardMeta}>{item.brand} · {formatBytes(item.size)}</Text>
                 <View style={styles.fileCardFooter}>
                   <View style={styles.smallBadge}><Text style={styles.smallBadgeText}>{fileBadge(item)}</Text></View>
-                  <Text style={styles.localCopyText}>本地副本</Text>
+                  <Text style={[styles.localCopyText, item.renameSyncStatus === "copy_only" && styles.localCopyWarning]}>{item.renameSyncStatus === "original_and_copy" ? "已同步改名" : item.renameSyncStatus === "copy_only" ? "已改本地副本" : "本地副本"}</Text>
                 </View>
               </View>
               <MaterialIcons name="chevron-right" size={24} color="#62717D" />
@@ -597,6 +598,7 @@ const styles = StyleSheet.create({
   primaryButton: { marginTop: 15, height: 50, borderRadius: 15, backgroundColor: "#D7983D", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
   primaryButtonText: { color: "#11161C", fontSize: 14, fontWeight: "800" },
   primaryButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
+  localCopyWarning: { color: "#F4D298" },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(4, 7, 10, 0.72)", justifyContent: "flex-end" },
   bottomSheet: { backgroundColor: "#1B242D", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 22, paddingBottom: 28, paddingTop: 9, borderTopWidth: 1, borderColor: "#394955" },
   modalTitle: { color: "#F4F1EA", fontSize: 19, lineHeight: 25, fontWeight: "800" },

@@ -8,7 +8,7 @@ import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 
 
 import { ScreenContainer } from "@/components/screen-container";
 import { ZoomableImage } from "@/components/zoomable-image";
-import { loadLibrary, renameLibraryFile } from "@/lib/photo-library";
+import { exportLibraryFile, loadLibrary, renameLibraryFile } from "@/lib/photo-library";
 import { createRawPreview } from "@/lib/raw-preview";
 import { type LibraryFile, formatBytes, sanitizeBaseName } from "@/lib/raw-files";
 
@@ -26,6 +26,7 @@ export default function DetailScreen() {
   const [isRenameVisible, setIsRenameVisible] = useState(false);
   const [draft, setDraft] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({ status: "idle", uri: null, message: null });
   const [retryCount, setRetryCount] = useState(0);
@@ -92,10 +93,10 @@ export default function DetailScreen() {
     if (!cleanName) return;
     setIsSaving(true);
     try {
-      const renamed = await renameLibraryFile(file, cleanName);
-      setFile(renamed);
+      const outcome = await renameLibraryFile(file, cleanName);
+      setFile(outcome.file);
       setIsRenameVisible(false);
-      setNotice(`已保存：${renamed.fileName}`);
+      setNotice(outcome.sourceRenamed ? `已同步改名：${outcome.file.fileName}` : `已改本地副本：${outcome.file.fileName}`);
       hapticSuccess();
     } catch (error) {
       Alert.alert("重命名未保存", error instanceof Error ? error.message : "请确认文件未被其他应用占用后重试。");
@@ -103,6 +104,22 @@ export default function DetailScreen() {
       setIsSaving(false);
     }
   }, [draft, file]);
+
+  const handleExport = useCallback(async () => {
+    if (!file) return;
+    setIsExporting(true);
+    try {
+      const exportedUri = await exportLibraryFile(file);
+      if (exportedUri) {
+        setNotice(`已导出副本：${file.fileName}`);
+        hapticSuccess();
+      }
+    } catch (error) {
+      Alert.alert("导出未完成", error instanceof Error ? error.message : "无法将本地副本导出到所选文件夹。");
+    } finally {
+      setIsExporting(false);
+    }
+  }, [file]);
 
   if (isLoading) {
     return <ScreenContainer className="items-center justify-center"><ActivityIndicator color="#D7983D" /><Text style={styles.loadingText}>正在读取文件</Text></ScreenContainer>;
@@ -117,6 +134,11 @@ export default function DetailScreen() {
   const cleanDraft = sanitizeBaseName(draft);
   const proposedName = cleanDraft ? `${cleanDraft}.${file.extension}` : "";
   const canConfirm = Boolean(cleanDraft) && proposedName !== file.fileName && !isSaving;
+  const renameStatusText = file.renameSyncStatus === "original_and_copy"
+    ? "已改本地副本和原文件"
+    : file.renameSyncStatus === "copy_only"
+      ? "已改本地副本 / 原文件未改"
+      : "当前管理应用本地副本";
 
   return (
     <GestureDetector gesture={edgeBackGesture}>
@@ -137,9 +159,10 @@ export default function DetailScreen() {
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.titleRow}><View style={styles.titleBox}><Text style={styles.fileName} numberOfLines={2}>{file.fileName}</Text><Text style={styles.fileMeta}>{file.brand} · {formatBytes(file.size)}</Text></View><View style={styles.badge}><Text style={styles.badgeText}>{file.kind === "raw" ? "RAW" : file.extension.toUpperCase()}</Text></View></View>
+            <View style={[styles.syncStatus, file.renameSyncStatus === "original_and_copy" ? styles.syncStatusSynced : styles.syncStatusLocal]}><MaterialIcons name={file.renameSyncStatus === "original_and_copy" ? "sync" : "folder-copy"} size={16} color={file.renameSyncStatus === "original_and_copy" ? "#82D5AF" : "#F4D298"} /><Text style={styles.syncStatusText}>{renameStatusText}</Text></View>
             {notice && <View style={styles.notice}><MaterialIcons name="check-circle" size={17} color="#69C99A" /><Text style={styles.noticeText} numberOfLines={1}>{notice}</Text></View>}
             <View style={styles.hintRow}><MaterialIcons name="swipe-right" size={16} color="#7E8B95" /><Text style={styles.hintText}>从左侧边缘右滑，返回上一视图</Text></View>
-            <Pressable onPress={openRename} style={({ pressed }) => [styles.renameButton, pressed && styles.renameButtonPressed]}><MaterialIcons name="drive-file-rename-outline" size={21} color="#11161C" /><Text style={styles.renameButtonText}>重命名文件</Text></Pressable>
+            <View style={styles.fileActions}><Pressable onPress={handleExport} disabled={isExporting} style={({ pressed }) => [styles.exportButton, (pressed || isExporting) && styles.renameButtonPressed]}>{isExporting ? <ActivityIndicator size="small" color="#F4D298" /> : <MaterialIcons name="folder-open" size={19} color="#F4D298" />}<Text style={styles.exportButtonText}>{isExporting ? "正在导出" : "导出副本"}</Text></Pressable><Pressable onPress={openRename} style={({ pressed }) => [styles.renameButton, pressed && styles.renameButtonPressed]}><MaterialIcons name="drive-file-rename-outline" size={21} color="#11161C" /><Text style={styles.renameButtonText}>重命名</Text></Pressable></View>
           </View>
 
           <Modal visible={isRenameVisible} transparent animationType="slide" onRequestClose={() => setIsRenameVisible(false)}>
@@ -174,9 +197,16 @@ const styles = StyleSheet.create({
   badgeText: { color: "#F4D298", fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
   notice: { minHeight: 34, marginTop: 12, borderRadius: 10, paddingHorizontal: 10, backgroundColor: "#19352C", flexDirection: "row", alignItems: "center", gap: 7 },
   noticeText: { flex: 1, color: "#BFE8D0", fontSize: 11, fontWeight: "700" },
+  syncStatus: { minHeight: 32, marginTop: 12, borderRadius: 10, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 7 },
+  syncStatusSynced: { backgroundColor: "#19352C" },
+  syncStatusLocal: { backgroundColor: "#382D20" },
+  syncStatusText: { color: "#F1E7D5", fontSize: 11, fontWeight: "700" },
   hintRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 12 },
   hintText: { color: "#7E8B95", fontSize: 11, lineHeight: 16 },
-  renameButton: { marginTop: 15, height: 50, borderRadius: 15, backgroundColor: "#D7983D", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  fileActions: { marginTop: 15, flexDirection: "row", gap: 10 },
+  renameButton: { height: 50, flex: 1.25, borderRadius: 15, backgroundColor: "#D7983D", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  exportButton: { height: 50, flex: 1, borderRadius: 15, borderWidth: 1, borderColor: "#71582F", backgroundColor: "#382D20", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
+  exportButtonText: { color: "#F4D298", fontSize: 13, fontWeight: "800" },
   renameButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
   renameButtonText: { color: "#11161C", fontSize: 14, fontWeight: "800" },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(4, 7, 10, 0.72)", justifyContent: "flex-end" },
