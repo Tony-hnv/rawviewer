@@ -42,3 +42,6 @@
 - [ ] 在真实 Android 发布构建中验证本地副本改名、文件夹导出和双指缩放交互
 - [x] 将 RAW View 1.0.8 提交并推送至用户指定的 GitHub 仓库
 - [x] 核验 GitHub 远程分支已包含 RAW View 1.0.8 提交
+- [x] 编写 RAW View 项目 README，说明功能、构建方法与已知限制
+- [ ] 将 README 提交并上传至 GitHub main 分支
+- [ ] 核验 GitHub 上 README 的内容与提交状态
