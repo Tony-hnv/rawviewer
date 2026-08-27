@@ -48,4 +48,4 @@
 - [x] 核对 GitHub CI 发布构建与当前 RAW View 交付版本的一致性
 - [x] 配置 RAW View Android Release 签名密钥与 GitHub Secrets
 - [x] 新增 GitHub Actions 自动构建签名 APK 并发布 Release 的工作流
-- [ ] 核验 GitHub Actions 构建与 GitHub Release APK 产物
+- [x] 核验 GitHub Actions 构建与 GitHub Release APK 产物
