@@ -70,5 +70,5 @@
 - [x] 修复手动裁切忽略用户选择范围并回退为左上角裁切的问题
 - [x] 修复裁切完成后新副本未保存到应用本地图库的问题
 - [ ] 用真实 Android 发布构建复验手动裁切区域与本地副本落盘
-- [ ] 将 RAW View 1.1.2 裁切严重缺陷修复同步至 GitHub main 分支
-- [ ] 触发并核验 RAW View v1.1.2 签名 APK CI 与公开 Release
+- [x] 将 RAW View 1.1.2 裁切严重缺陷修复同步至 GitHub main 分支
+- [x] 触发并核验 RAW View v1.1.2 签名 APK CI 与公开 Release
