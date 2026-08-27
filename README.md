@@ -113,6 +113,12 @@ npx expo config --json
 
 当前发布版本为 **1.0.8**，Android `versionCode` 为 **9**。
 
+## 自动构建与 GitHub Release
+
+仓库包含 Android Release 构建工作流。推送形如 `v1.0.8` 的 Git tag，或从 GitHub Actions 手动运行 **Android Release APK** 工作流，会执行干净的 Android 预构建、生成已签名 APK、校验签名，并将产物上传到对应的 GitHub Release。
+
+工作流使用仓库的加密机密变量保存签名材料，密钥文件不会写入 Git 历史。发布前请确认 `app.config.ts` 中的 `version` 与 Android `versionCode` 已按需更新；同一应用包名的新版本必须使用同一签名密钥，才能覆盖安装已发布版本。[3]
+
 ## 当前限制
 
 | 项目       | 说明                                                                                      |
@@ -127,3 +133,5 @@ npx expo config --json
 [1] [Expo：FileSystem](https://docs.expo.dev/versions/latest/sdk/filesystem/)
 
 [2] [LibRaw 官方网站](https://www.libraw.org/)
+
+[3] [Android Developers：应用签名](https://developer.android.com/studio/publish/app-signing)

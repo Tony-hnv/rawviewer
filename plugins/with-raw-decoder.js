@@ -348,6 +348,39 @@ function addNativeDependency(contents) {
   return contents.replace(/dependencies\s*\{/, (match) => `${match}\n    ${LIBRAW_DEPENDENCY}`);
 }
 
+function addReleaseSigningConfiguration(contents) {
+  if (contents.includes("RAWVIEW_RELEASE_SIGNING")) return contents;
+
+  const releaseSigningProperties = `// RAWVIEW_RELEASE_SIGNING: loaded only when a CI or local release keystore is provided.
+def rawViewKeystorePropertiesFile = rootProject.file("keystore.properties")
+def rawViewKeystoreProperties = new Properties()
+if (rawViewKeystorePropertiesFile.exists()) {
+    rawViewKeystorePropertiesFile.withInputStream { rawViewKeystoreProperties.load(it) }
+}
+
+`;
+  let updated = contents.replace(/android\s*\{/, (match) => `${releaseSigningProperties}${match}`);
+
+  updated = updated.replace(
+    /(signingConfigs\s*\{\s*debug\s*\{[\s\S]*?\n\s*\}\s*)(\n\s*\})/,
+    `$1
+        release {
+            if (rawViewKeystorePropertiesFile.exists()) {
+                storeFile file(rawViewKeystoreProperties["storeFile"])
+                storePassword rawViewKeystoreProperties["storePassword"]
+                keyAlias rawViewKeystoreProperties["keyAlias"]
+                keyPassword rawViewKeystoreProperties["keyPassword"]
+            }
+        }$2`,
+  );
+
+  return updated.replace(
+    /signingConfig signingConfigs\.debug\n(\s*def enableShrinkResources)/,
+    `signingConfig rawViewKeystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            $1`,
+  );
+}
+
 function registerRawDecoderPackage(contents, language) {
   if (contents.includes(PACKAGE_IMPORT)) return contents;
   const importStatement = language === "java"
@@ -393,7 +426,9 @@ function withRawDecoder(config) {
   });
 
   config = withAppBuildGradle(config, (modConfig) => {
-    modConfig.modResults.contents = addNativeDependency(modConfig.modResults.contents);
+    modConfig.modResults.contents = addReleaseSigningConfiguration(
+      addNativeDependency(modConfig.modResults.contents),
+    );
     return modConfig;
   });
 
@@ -428,4 +463,4 @@ function withRawDecoder(config) {
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.4");
+module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.5");

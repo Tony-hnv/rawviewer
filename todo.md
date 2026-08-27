@@ -45,3 +45,7 @@
 - [x] 编写 RAW View 项目 README，说明功能、构建方法与已知限制
 - [x] 将 README 提交并上传至 GitHub main 分支
 - [x] 核验 GitHub 上 README 的内容与提交状态
+- [x] 核对 GitHub CI 发布构建与当前 RAW View 交付版本的一致性
+- [x] 配置 RAW View Android Release 签名密钥与 GitHub Secrets
+- [x] 新增 GitHub Actions 自动构建签名 APK 并发布 Release 的工作流
+- [ ] 核验 GitHub Actions 构建与 GitHub Release APK 产物
