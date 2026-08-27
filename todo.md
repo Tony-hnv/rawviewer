@@ -62,3 +62,6 @@
 - [x] 核验 GitHub main 已包含 RAW View 1.1.0 的最新提交
 - [x] 定位 GitHub Actions Android Release 构建失败的根本原因：EXIF 复制/分享模块未写入 package 依赖与锁文件，导致 Metro 无法解析 expo-clipboard
 - [x] 修复 GitHub Actions 发布构建配置并重新核验签名 APK 产物
+- [x] 将固定比例裁切改为支持拖动位置和缩放尺寸的交互式裁切框
+- [x] 通过单元测试验证裁切框的比例锁定、边界限制与显示坐标换算
+- [ ] 在真实 Android 发布构建中验证手动裁切的触控手势、EXIF 方向与新副本输出位置

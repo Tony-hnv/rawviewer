@@ -1,6 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
 
 import {
+  clampSourceCrop,
   getCenteredCrop,
   type CropAspectRatio,
   type CropRect,
@@ -56,6 +57,7 @@ async function getAvailableCropName(fileName: string): Promise<string> {
 export async function createCroppedLibraryCopy(
   file: LibraryFile,
   ratio: CropAspectRatio,
+  selectedCrop?: CropRect,
 ): Promise<LibraryFile> {
   if (file.kind !== "image") {
     throw new Error(
@@ -71,7 +73,11 @@ export async function createCroppedLibraryCopy(
     ): Promise<{ uri: string; width: number; height: number }>;
   };
   const dimensions = await getImageDimensions(file.uri);
-  const crop = getCenteredCrop(dimensions.width, dimensions.height, ratio);
+  const crop = clampSourceCrop(
+    selectedCrop ?? getCenteredCrop(dimensions.width, dimensions.height, ratio),
+    dimensions.width,
+    dimensions.height,
+  );
   const outputExtension = file.extension === "png" ? "png" : "jpg";
   const croppedResult = await ImageManipulator.manipulateAsync(
     file.uri,
