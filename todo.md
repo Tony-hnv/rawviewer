@@ -76,5 +76,5 @@
 - [x] 增加纯色、EXIF 信息和相机/手机品牌标识等照片边框副本导出功能
 - [ ] 验证边框导出不修改原图、输出副本持久化和清除图片后的本地状态
 - [ ] 在真实 Android 发布构建中验证清除图片和各类边框导出体验
-- [ ] 将 RAW View 1.1.3 清除图库与照片边框更新同步至 GitHub main 分支
-- [ ] 触发并核验 RAW View v1.1.3 签名 APK CI 与公开 Release
+- [x] 将 RAW View 1.1.3 清除图库与照片边框更新同步至 GitHub main 分支
+- [x] 触发并核验 RAW View v1.1.3 签名 APK CI 与公开 Release
