@@ -6,7 +6,7 @@ import {
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -88,6 +88,7 @@ export default function DetailScreen() {
   const [isCropVisible, setIsCropVisible] = useState(false);
   const [cropRatio, setCropRatio] = useState<CropAspectRatio>("1:1");
   const [cropSelection, setCropSelection] = useState<CropRect | null>(null);
+  const cropSelectionRef = useRef<CropRect | null>(null);
   const [cropError, setCropError] = useState<string | null>(null);
   const [cropResetKey, setCropResetKey] = useState(0);
   const [isCropping, setIsCropping] = useState(false);
@@ -238,20 +239,36 @@ export default function DetailScreen() {
       return;
     }
     setCropRatio("1:1");
+    cropSelectionRef.current = null;
     setCropSelection(null);
     setCropError(null);
     setCropResetKey((value) => value + 1);
     setIsCropVisible(true);
   }, [file]);
 
+  const handleCropSelectionChange = useCallback(
+    (selection: CropRect | null) => {
+      cropSelectionRef.current = selection;
+      setCropSelection(selection);
+    },
+    [],
+  );
+
   const confirmCrop = useCallback(async () => {
-    if (!file || file.kind !== "image" || !cropSelection || cropError) return;
+    const selectedCrop = cropSelectionRef.current ?? cropSelection;
+    if (!file || file.kind !== "image" || !selectedCrop || cropError) {
+      Alert.alert(
+        "裁切区域未就绪",
+        "请等待裁切框显示后再保存；如仍无响应，请关闭裁切后重新打开。",
+      );
+      return;
+    }
     setIsCropping(true);
     try {
       const croppedFile = await createCroppedLibraryCopy(
         file,
         cropRatio,
-        cropSelection,
+        selectedCrop,
       );
       setIsCropVisible(false);
       setNotice(`已创建 ${cropRatio} 手动裁切副本`);
@@ -754,7 +771,7 @@ export default function DetailScreen() {
                   ratio={cropRatio}
                   resetKey={cropResetKey}
                   disabled={isCropping}
-                  onCropChange={setCropSelection}
+                  onCropChange={handleCropSelectionChange}
                   onLoadError={setCropError}
                 />
                 <View style={styles.ratioGrid}>
@@ -762,6 +779,7 @@ export default function DetailScreen() {
                     <Pressable
                       key={option.id}
                       onPress={() => {
+                        cropSelectionRef.current = null;
                         setCropSelection(null);
                         setCropError(null);
                         setCropRatio(option.id);
@@ -812,6 +830,7 @@ export default function DetailScreen() {
                   </Pressable>
                   <Pressable
                     onPress={() => {
+                      cropSelectionRef.current = null;
                       setCropSelection(null);
                       setCropError(null);
                       setCropResetKey((value) => value + 1);

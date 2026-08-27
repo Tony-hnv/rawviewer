@@ -129,7 +129,7 @@ pnpm lint
 npx expo config --json
 ```
 
-当前开发版本为 **1.1.1**，Android `versionCode` 为 **12**。此更新尚未自动推送或发布新的 GitHub Release。
+当前开发版本为 **1.1.2**，Android `versionCode` 为 **13**。此版本会在裁切后校验输出尺寸、通过 Android 原生副本路径写入应用本地图库并读回校验记录，同时在返回图库时刷新内容；尚未自动推送或发布新的 GitHub Release。
 
 ## 自动构建与 GitHub Release
 

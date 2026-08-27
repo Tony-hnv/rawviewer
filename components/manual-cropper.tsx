@@ -1,13 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Image as ExpoImage } from "expo-image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Image as NativeImage,
-  LayoutChangeEvent,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { LayoutChangeEvent, StyleSheet, Text, View } from "react-native";
 import {
   Gesture,
   GestureDetector,
@@ -25,6 +19,7 @@ import {
   resizeCropBoxFromBottomRight,
   resizeCropBoxFromCenter,
 } from "@/lib/crop-math";
+import { getCropImageInfo } from "@/lib/local-file-bridge";
 
 type ImageSize = { width: number; height: number };
 
@@ -69,10 +64,32 @@ export function ManualCropper({
     );
   }, [canvasSize, sourceSize]);
 
-  const commitCrop = useCallback((nextCrop: CropBox) => {
-    cropRef.current = nextCrop;
-    setCropBox(nextCrop);
-  }, []);
+  const publishCrop = useCallback(
+    (nextCrop: CropBox) => {
+      if (!imageBounds || !sourceSize) {
+        onCropChange(null);
+        return;
+      }
+      onCropChange(
+        getSourceCropFromPreview(
+          nextCrop,
+          imageBounds,
+          sourceSize.width,
+          sourceSize.height,
+        ),
+      );
+    },
+    [imageBounds, onCropChange, sourceSize],
+  );
+
+  const commitCrop = useCallback(
+    (nextCrop: CropBox) => {
+      cropRef.current = nextCrop;
+      publishCrop(nextCrop);
+      setCropBox(nextCrop);
+    },
+    [publishCrop],
+  );
 
   useEffect(() => {
     let active = true;
@@ -81,19 +98,17 @@ export function ManualCropper({
     cropRef.current = null;
     onCropChange(null);
     onLoadError(null);
-    NativeImage.getSize(
-      uri,
-      (width, height) => {
+    void getCropImageInfo(uri)
+      .then(({ width, height }) => {
         if (!active || width <= 0 || height <= 0) return;
         setSourceSize({ width, height });
-      },
-      () => {
+      })
+      .catch(() => {
         if (!active) return;
         onLoadError(
           "无法读取图片尺寸。请关闭裁切后重新打开，或确认图片文件仍可访问。",
         );
-      },
-    );
+      });
     return () => {
       active = false;
     };
@@ -104,21 +119,6 @@ export function ManualCropper({
     onCropChange(null);
     commitCrop(getInitialCropBox(imageBounds, ratio));
   }, [commitCrop, imageBounds, onCropChange, ratio, resetKey]);
-
-  useEffect(() => {
-    if (!cropBox || !imageBounds || !sourceSize) {
-      onCropChange(null);
-      return;
-    }
-    onCropChange(
-      getSourceCropFromPreview(
-        cropBox,
-        imageBounds,
-        sourceSize.width,
-        sourceSize.height,
-      ),
-    );
-  }, [cropBox, imageBounds, onCropChange, sourceSize]);
 
   const handleCanvasLayout = useCallback((event: LayoutChangeEvent) => {
     const nextSize = {

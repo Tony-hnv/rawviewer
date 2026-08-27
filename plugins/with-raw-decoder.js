@@ -10,14 +10,19 @@ const fs = require("fs");
 const path = require("path");
 
 const PACKAGE_IMPORT = "com.rawview.rawdecoder.RawDecoderPackage";
-const LIBRAW_DEPENDENCY = 'implementation("com.github.dburckh:AndroidLibRaw:2.0.7")';
-const EXIF_DEPENDENCY = 'implementation("androidx.exifinterface:exifinterface:1.3.7")';
-const METADATA_EXTRACTOR_DEPENDENCY = 'implementation("com.drewnoakes:metadata-extractor:2.21.0")';
+const LIBRAW_DEPENDENCY =
+  'implementation("com.github.dburckh:AndroidLibRaw:2.0.7")';
+const EXIF_DEPENDENCY =
+  'implementation("androidx.exifinterface:exifinterface:1.3.7")';
+const METADATA_EXTRACTOR_DEPENDENCY =
+  'implementation("com.drewnoakes:metadata-extractor:2.21.0")';
 
 const rawDecoderModule = `package com.rawview.rawdecoder
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.app.Activity
@@ -137,6 +142,137 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
   private fun inputStreamFor(uri: Uri) = when (uri.scheme) {
     "file" -> File(requireNotNull(uri.path) { "File path is unavailable." }).inputStream()
     else -> requireNotNull(appContext.contentResolver.openInputStream(uri)) { "Unable to read the selected file." }
+  }
+
+  private fun imageOrientation(file: File): Int = try {
+    ExifInterface(file.absolutePath).getAttributeInt(
+      ExifInterface.TAG_ORIENTATION,
+      ExifInterface.ORIENTATION_NORMAL,
+    )
+  } catch (_: Exception) {
+    ExifInterface.ORIENTATION_NORMAL
+  }
+
+  private fun orientationMatrix(orientation: Int): Matrix = Matrix().apply {
+    when (orientation) {
+      ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
+      ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
+      ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
+      ExifInterface.ORIENTATION_TRANSPOSE -> {
+        postRotate(90f)
+        postScale(-1f, 1f)
+      }
+      ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
+      ExifInterface.ORIENTATION_TRANSVERSE -> {
+        postRotate(-90f)
+        postScale(-1f, 1f)
+      }
+      ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(270f)
+    }
+  }
+
+  private fun uprightImageSize(file: File): Pair<Int, Int> {
+    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeFile(file.absolutePath, options)
+    val width = options.outWidth
+    val height = options.outHeight
+    check(width > 0 && height > 0) { "IMAGE_DIMENSIONS_UNAVAILABLE: Cannot decode image dimensions." }
+    return when (imageOrientation(file)) {
+      ExifInterface.ORIENTATION_TRANSPOSE,
+      ExifInterface.ORIENTATION_ROTATE_90,
+      ExifInterface.ORIENTATION_TRANSVERSE,
+      ExifInterface.ORIENTATION_ROTATE_270 -> Pair(height, width)
+      else -> Pair(width, height)
+    }
+  }
+
+  private fun decodeUprightBitmap(file: File): Bitmap {
+    val decoded = requireNotNull(BitmapFactory.decodeFile(file.absolutePath)) {
+      "IMAGE_DECODE_FAILED: Cannot decode the selected image."
+    }
+    val orientation = imageOrientation(file)
+    if (orientation == ExifInterface.ORIENTATION_NORMAL || orientation == ExifInterface.ORIENTATION_UNDEFINED) {
+      return decoded
+    }
+    return try {
+      Bitmap.createBitmap(
+        decoded,
+        0,
+        0,
+        decoded.width,
+        decoded.height,
+        orientationMatrix(orientation),
+        true,
+      ).also { upright ->
+        if (upright !== decoded) decoded.recycle()
+      }
+    } catch (error: Exception) {
+      decoded.recycle()
+      throw error
+    }
+  }
+
+  @ReactMethod
+  fun getCropImageInfo(localUri: String, promise: Promise) {
+    try {
+      val file = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
+      check(file.exists()) { "CROP_SOURCE_MISSING: Import the file again before cropping." }
+      val (width, height) = uprightImageSize(file)
+      promise.resolve(Arguments.createMap().apply {
+        putInt("width", width)
+        putInt("height", height)
+        putInt("orientation", imageOrientation(file))
+      })
+    } catch (error: Exception) {
+      promise.reject("CROP_INFO_FAILED", error.message ?: "Unable to read crop image dimensions.", error)
+    }
+  }
+
+  @ReactMethod
+  fun cropImage(
+    localUri: String,
+    originX: Double,
+    originY: Double,
+    width: Double,
+    height: Double,
+    destinationUri: String,
+    format: String,
+    promise: Promise,
+  ) {
+    var uprightBitmap: Bitmap? = null
+    var croppedBitmap: Bitmap? = null
+    try {
+      val sourceFile = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
+      check(sourceFile.exists()) { "CROP_SOURCE_MISSING: Import the file again before cropping." }
+      val upright = decodeUprightBitmap(sourceFile)
+      uprightBitmap = upright
+      val sourceWidth = upright.width
+      val sourceHeight = upright.height
+      val left = originX.roundToInt().coerceIn(0, sourceWidth - 1)
+      val top = originY.roundToInt().coerceIn(0, sourceHeight - 1)
+      val cropWidth = width.roundToInt().coerceIn(1, sourceWidth - left)
+      val cropHeight = height.roundToInt().coerceIn(1, sourceHeight - top)
+      val cropped = Bitmap.createBitmap(upright, left, top, cropWidth, cropHeight)
+      croppedBitmap = cropped
+
+      val destinationFile = File(requireNotNull(Uri.parse(destinationUri).path) { "Destination path is unavailable." })
+      destinationFile.parentFile?.mkdirs()
+      val compressFormat = if (format == "png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+      destinationFile.outputStream().use { output ->
+        check(cropped.compress(compressFormat, 100, output)) { "CROP_WRITE_FAILED: Android could not encode the cropped image." }
+      }
+      check(destinationFile.exists() && destinationFile.length() > 0L) { "CROP_WRITE_FAILED: Cropped local copy is empty." }
+      promise.resolve(Arguments.createMap().apply {
+        putString("uri", "file://" + destinationFile.absolutePath)
+        putInt("width", cropWidth)
+        putInt("height", cropHeight)
+      })
+    } catch (error: Exception) {
+      promise.reject("CROP_FAILED", error.message ?: "Unable to crop image into the local library.", error)
+    } finally {
+      croppedBitmap?.recycle()
+      uprightBitmap?.recycle()
+    }
   }
 
   private fun isRawFile(file: File): Boolean = file.extension.lowercase() in setOf("arw", "cr2", "cr3", "nef", "rw2")
@@ -458,15 +594,20 @@ function addJitPackRepository(contents) {
   if (contents.includes("jitpack.io")) return contents;
   const repositoriesBlock = /allprojects\s*\{\s*repositories\s*\{/;
   if (repositoriesBlock.test(contents)) {
-    return contents.replace(repositoriesBlock, (match) => `${match}\n        maven { url "https://jitpack.io" }`);
+    return contents.replace(
+      repositoriesBlock,
+      (match) => `${match}\n        maven { url "https://jitpack.io" }`,
+    );
   }
   return `${contents}\nallprojects { repositories { maven { url "https://jitpack.io" } } }\n`;
 }
 
 function addNativeDependency(contents) {
-  const dependencies = [LIBRAW_DEPENDENCY, EXIF_DEPENDENCY, METADATA_EXTRACTOR_DEPENDENCY].filter(
-    (dependency) => !contents.includes(dependency),
-  );
+  const dependencies = [
+    LIBRAW_DEPENDENCY,
+    EXIF_DEPENDENCY,
+    METADATA_EXTRACTOR_DEPENDENCY,
+  ].filter((dependency) => !contents.includes(dependency));
   if (dependencies.length === 0) return contents;
   return contents.replace(
     /dependencies\s*\{/,
@@ -485,7 +626,10 @@ if (rawViewKeystorePropertiesFile.exists()) {
 }
 
 `;
-  let updated = contents.replace(/android\s*\{/, (match) => `${releaseSigningProperties}${match}`);
+  let updated = contents.replace(
+    /android\s*\{/,
+    (match) => `${releaseSigningProperties}${match}`,
+  );
 
   updated = updated.replace(
     /(signingConfigs\s*\{\s*debug\s*\{[\s\S]*?\n\s*\}\s*)(\n\s*\})/,
@@ -509,10 +653,14 @@ if (rawViewKeystorePropertiesFile.exists()) {
 
 function registerRawDecoderPackage(contents, language) {
   if (contents.includes(PACKAGE_IMPORT)) return contents;
-  const importStatement = language === "java"
-    ? `import ${PACKAGE_IMPORT};`
-    : `import ${PACKAGE_IMPORT}`;
-  const withImport = contents.replace(/^(package\s+[^\n;]+;?)$/m, (match) => `${match}\n\n${importStatement}`);
+  const importStatement =
+    language === "java"
+      ? `import ${PACKAGE_IMPORT};`
+      : `import ${PACKAGE_IMPORT}`;
+  const withImport = contents.replace(
+    /^(package\s+[^\n;]+;?)$/m,
+    (match) => `${match}\n\n${importStatement}`,
+  );
 
   if (language === "java") {
     return withImport.replace(
@@ -523,15 +671,21 @@ function registerRawDecoderPackage(contents, language) {
 
   const packageListPattern = /PackageList\(this\)\.packages\.apply\s*\{/;
   if (!packageListPattern.test(withImport)) {
-    throw new Error("Unable to register RawDecoderPackage in MainApplication.kt.");
+    throw new Error(
+      "Unable to register RawDecoderPackage in MainApplication.kt.",
+    );
   }
-  return withImport.replace(packageListPattern, (match) => `${match}\n          add(RawDecoderPackage())`);
+  return withImport.replace(
+    packageListPattern,
+    (match) => `${match}\n          add(RawDecoderPackage())`,
+  );
 }
 
 function withRawDecoder(config) {
   config = withGradleProperties(config, (modConfig) => {
     const safeBuildProperties = {
-      "org.gradle.jvmargs": "-Xmx1280m -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=160m -Dfile.encoding=UTF-8",
+      "org.gradle.jvmargs":
+        "-Xmx1280m -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=160m -Dfile.encoding=UTF-8",
       "org.gradle.daemon": "false",
       "org.gradle.parallel": "false",
       "org.gradle.workers.max": "1",
@@ -547,7 +701,9 @@ function withRawDecoder(config) {
   });
 
   config = withProjectBuildGradle(config, (modConfig) => {
-    modConfig.modResults.contents = addJitPackRepository(modConfig.modResults.contents);
+    modConfig.modResults.contents = addJitPackRepository(
+      modConfig.modResults.contents,
+    );
     return modConfig;
   });
 
@@ -561,32 +717,50 @@ function withRawDecoder(config) {
   config = withMainApplication(config, (modConfig) => {
     const { language } = modConfig.modResults;
     if (language === "java") {
-      throw new Error("RAW View expects a Kotlin MainApplication for the RawDecoder bridge.");
+      throw new Error(
+        "RAW View expects a Kotlin MainApplication for the RawDecoder bridge.",
+      );
     }
-    modConfig.modResults.contents = registerRawDecoderPackage(modConfig.modResults.contents, language);
+    modConfig.modResults.contents = registerRawDecoderPackage(
+      modConfig.modResults.contents,
+      language,
+    );
     return modConfig;
   });
 
-  config = withDangerousMod(config, ["android", async (modConfig) => {
-    const sourceDirectory = path.join(
-      modConfig.modRequest.platformProjectRoot,
-      "app",
-      "src",
-      "main",
-      "java",
-      "com",
-      "rawview",
-      "rawdecoder",
-    );
-    await fs.promises.mkdir(sourceDirectory, { recursive: true });
-    await Promise.all([
-      fs.promises.writeFile(path.join(sourceDirectory, "RawDecoderModule.kt"), rawDecoderModule),
-      fs.promises.writeFile(path.join(sourceDirectory, "RawDecoderPackage.kt"), rawDecoderPackage),
-    ]);
-    return modConfig;
-  }]);
+  config = withDangerousMod(config, [
+    "android",
+    async (modConfig) => {
+      const sourceDirectory = path.join(
+        modConfig.modRequest.platformProjectRoot,
+        "app",
+        "src",
+        "main",
+        "java",
+        "com",
+        "rawview",
+        "rawdecoder",
+      );
+      await fs.promises.mkdir(sourceDirectory, { recursive: true });
+      await Promise.all([
+        fs.promises.writeFile(
+          path.join(sourceDirectory, "RawDecoderModule.kt"),
+          rawDecoderModule,
+        ),
+        fs.promises.writeFile(
+          path.join(sourceDirectory, "RawDecoderPackage.kt"),
+          rawDecoderPackage,
+        ),
+      ]);
+      return modConfig;
+    },
+  ]);
 
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.7");
+module.exports = createRunOncePlugin(
+  withRawDecoder,
+  "rawview-libraw-decoder",
+  "1.0.7",
+);

@@ -4,6 +4,7 @@ import {
   getCenteredCrop,
   getContainedImageBounds,
   getInitialCropBox,
+  getSelectedOrCenteredCrop,
   getSourceCropFromPreview,
   moveCropBox,
   resizeCropBoxFromBottomRight,
@@ -30,6 +31,17 @@ describe("getCenteredCrop", () => {
 });
 
 describe("manual crop geometry", () => {
+  it("preserves a user-selected source region instead of reverting to a default crop", () => {
+    expect(
+      getSelectedOrCenteredCrop(
+        { originX: 1200, originY: 500, width: 1600, height: 1200 },
+        4000,
+        3000,
+        "4:3",
+      ),
+    ).toEqual({ originX: 1200, originY: 500, width: 1600, height: 1200 });
+  });
+
   it("places a contain-fitted landscape image in the centre of a portrait canvas", () => {
     expect(getContainedImageBounds(4000, 3000, 300, 500)).toEqual({
       x: 0,

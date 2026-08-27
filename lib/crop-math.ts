@@ -252,3 +252,17 @@ export function clampSourceCrop(
     height,
   };
 }
+
+/** 优先保留用户选择的原图像素区域；没有手动选区时才使用居中默认值。 */
+export function getSelectedOrCenteredCrop(
+  selectedCrop: CropRect | undefined,
+  sourceWidth: number,
+  sourceHeight: number,
+  ratio: CropAspectRatio,
+): CropRect {
+  return clampSourceCrop(
+    selectedCrop ?? getCenteredCrop(sourceWidth, sourceHeight, ratio),
+    sourceWidth,
+    sourceHeight,
+  );
+}
