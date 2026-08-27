@@ -19,6 +19,7 @@ interface RawDecoderNativeModule {
   copyToLibrary(sourceUri: string, destinationUri: string): Promise<string>;
   renameLibraryFile(localUri: string, sourceUri: string | null, fileName: string): Promise<NativeFileRenameResult>;
   exportLibraryFile(localUri: string, fileName: string): Promise<string | null>;
+  readExif(localUri: string): Promise<import("./exif-info").ExifInfo>;
 }
 
 function nativeModule(): RawDecoderNativeModule {

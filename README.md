@@ -15,6 +15,7 @@ RAW View 将用户导入的文件复制到**应用私有本地图库**中管理�
 | 同步状态   | 改名后明确显示“已改本地副本 / 原文件未改”或“已改本地副本和原文件”。                        |
 | 文件夹导出 | 通过 Android 系统文件夹选择器，将本地副本导出到用户指定目录。                              |
 | 全屏浏览   | 点击图片进入全屏，支持双指缩放、单指拖动、双击在 100% 与 200% 间切换，以及“适应屏幕”复位。 |
+| EXIF 信息  | 在详情页按需读取相机、镜头、拍摄时间、焦距、光圈、快门、ISO、像素尺寸与方向。              |
 | 导航体验   | 文件详情支持返回按钮与左侧边缘右滑返回文件库。                                             |
 
 ## 支持格式
@@ -81,6 +82,10 @@ pnpm dev
 
 点击预览图进入全屏模式。顶部会显示当前缩放比例；可用双指缩放、单指拖动查看局部，双击在 100% 与 200% 间切换，或点击“适应屏幕”回到 100%。
 
+### EXIF 信息
+
+在详情页点击“查看 EXIF 信息”即可按需读取应用本地副本。对于包含标准 EXIF 的 JPG、JPEG、PNG，界面会展示可用的相机、镜头、拍摄时间和曝光参数；没有嵌入元数据的文件会明确提示。Sony ARW、Canon CR2 / CR3、Nikon NEF 与 Panasonic RW2 仍可使用现有 RAW 预览功能，但当前版本会提示厂商 RAW 元数据尚未直接解析。
+
 ## 项目结构
 
 ```text
@@ -92,12 +97,14 @@ components/
 lib/
   photo-library.ts           # 本地图库、导入、持久化、改名与导出流程
   local-file-bridge.ts       # TypeScript 到 Android 原生文件桥接
+  exif-info.ts               # EXIF 数据模型、原生调用与展示格式化
   raw-files.ts               # 支持格式、文件模型与名称清洗
   raw-preview.ts             # RAW 预览调用层
 plugins/
   with-raw-decoder.js        # Expo 配置插件：LibRaw 与 Android 原生模块
 tests/
   raw-files.test.ts          # 格式识别与文件名规则测试
+  exif-info.test.ts          # EXIF 展示格式化测试
 ```
 
 ## 质量检查
@@ -111,7 +118,7 @@ pnpm lint
 npx expo config --json
 ```
 
-当前发布版本为 **1.0.8**，Android `versionCode` 为 **9**。
+当前发布版本为 **1.0.9**，Android `versionCode` 为 **10**。
 
 ## 自动构建与 GitHub Release
 
@@ -127,6 +134,7 @@ npx expo config --json
 | Expo Go    | 不包含自定义 LibRaw / 文件管理原生模块，因此无法验证 RAW 预览、应用副本改名与文件夹导出。 |
 | 原文件改名 | Android 文件提供方可能返回“不支持改名”；这不会阻止应用本地副本改名。                      |
 | RAW 预览   | 是否能成功解码由源文件、相机编码变体、设备可用内存和 LibRaw 支持情况共同决定。            |
+| RAW EXIF   | 厂商 RAW 元数据当前不做直接解析，详情页会显示可操作的降级提示。                           |
 
 ## 参考资料
 

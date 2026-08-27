@@ -11,6 +11,7 @@ const path = require("path");
 
 const PACKAGE_IMPORT = "com.rawview.rawdecoder.RawDecoderPackage";
 const LIBRAW_DEPENDENCY = 'implementation("com.github.dburckh:AndroidLibRaw:2.0.7")';
+const EXIF_DEPENDENCY = 'implementation("androidx.exifinterface:exifinterface:1.3.7")';
 
 const rawDecoderModule = `package com.rawview.rawdecoder
 
@@ -23,6 +24,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import androidx.exifinterface.media.ExifInterface
 import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -132,6 +134,74 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
   private fun inputStreamFor(uri: Uri) = when (uri.scheme) {
     "file" -> File(requireNotNull(uri.path) { "File path is unavailable." }).inputStream()
     else -> requireNotNull(appContext.contentResolver.openInputStream(uri)) { "Unable to read the selected file." }
+  }
+
+  private fun isRawFile(file: File): Boolean = file.extension.lowercase() in setOf("arw", "cr2", "cr3", "nef", "rw2")
+
+  private fun formatExifDate(value: String?): String? {
+    if (value.isNullOrBlank()) return null
+    if (value.length < 10 || value[4] != ':' || value[7] != ':') return value
+    return value.substring(0, 4) + "-" + value.substring(5, 7) + "-" + value.substring(8)
+  }
+
+  @ReactMethod
+  fun readExif(localUri: String, promise: Promise) {
+    try {
+      val localFile = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
+      check(localFile.exists()) { "EXIF_SOURCE_MISSING: The local copy is no longer available." }
+      if (isRawFile(localFile)) {
+        promise.resolve(Arguments.createMap().apply {
+          putString("status", "unsupported")
+          putString("message", "当前版本可预览此 RAW 文件，但其厂商元数据暂不支持直接读取。")
+        })
+        return
+      }
+
+      val exif = ExifInterface(localFile.absolutePath)
+      val result = Arguments.createMap()
+      var fieldCount = 0
+      fun putText(key: String, value: String?) {
+        val cleanValue = value?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        result.putString(key, cleanValue)
+        fieldCount += 1
+      }
+      fun putNumber(key: String, value: Double) {
+        if (value <= 0.0) return
+        result.putDouble(key, value)
+        fieldCount += 1
+      }
+      fun putInteger(key: String, value: Int) {
+        if (value <= 0) return
+        result.putInt(key, value)
+        fieldCount += 1
+      }
+
+      putText("make", exif.getAttribute(ExifInterface.TAG_MAKE))
+      putText("model", exif.getAttribute(ExifInterface.TAG_MODEL))
+      putText("lensModel", exif.getAttribute(ExifInterface.TAG_LENS_MODEL))
+      putText("dateTime", formatExifDate(exif.getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: exif.getAttribute(ExifInterface.TAG_DATETIME)))
+      putNumber("focalLength", exif.getAttributeDouble(ExifInterface.TAG_FOCAL_LENGTH, 0.0))
+      putNumber("aperture", exif.getAttributeDouble(ExifInterface.TAG_F_NUMBER, 0.0))
+      putText("exposureTime", exif.getAttribute(ExifInterface.TAG_EXPOSURE_TIME)?.let { "$it s" })
+      putInteger("iso", exif.getAttributeInt(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, exif.getAttributeInt(ExifInterface.TAG_ISO_SPEED_RATINGS, 0)))
+      putInteger("width", exif.getAttributeInt(ExifInterface.TAG_PIXEL_X_DIMENSION, exif.getAttributeInt(ExifInterface.TAG_IMAGE_WIDTH, 0)))
+      putInteger("height", exif.getAttributeInt(ExifInterface.TAG_PIXEL_Y_DIMENSION, exif.getAttributeInt(ExifInterface.TAG_IMAGE_LENGTH, 0)))
+      putInteger("orientation", exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 0))
+
+      if (fieldCount > 0) {
+        result.putString("status", "available")
+        result.putString("message", "已读取可用的 EXIF 与图像信息。")
+      } else {
+        result.putString("status", "unavailable")
+        result.putString("message", "此文件未包含可读取的 EXIF 信息。")
+      }
+      promise.resolve(result)
+    } catch (_: Exception) {
+      promise.resolve(Arguments.createMap().apply {
+        putString("status", "unavailable")
+        putString("message", "无法读取此文件的 EXIF 信息。")
+      })
+    }
   }
 
   @ReactMethod
@@ -344,8 +414,14 @@ function addJitPackRepository(contents) {
 }
 
 function addNativeDependency(contents) {
-  if (contents.includes("AndroidLibRaw")) return contents;
-  return contents.replace(/dependencies\s*\{/, (match) => `${match}\n    ${LIBRAW_DEPENDENCY}`);
+  const dependencies = [LIBRAW_DEPENDENCY, EXIF_DEPENDENCY].filter(
+    (dependency) => !contents.includes(dependency),
+  );
+  if (dependencies.length === 0) return contents;
+  return contents.replace(
+    /dependencies\s*\{/,
+    (match) => `${match}\n    ${dependencies.join("\n    ")}`,
+  );
 }
 
 function addReleaseSigningConfiguration(contents) {
@@ -463,4 +539,4 @@ function withRawDecoder(config) {
   return config;
 }
 
-module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.5");
+module.exports = createRunOncePlugin(withRawDecoder, "rawview-libraw-decoder", "1.0.6");

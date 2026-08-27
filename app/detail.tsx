@@ -2,17 +2,19 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as Haptics from "expo-haptics";
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { ScreenContainer } from "@/components/screen-container";
 import { ZoomableImage } from "@/components/zoomable-image";
+import { getExifDisplayRows, readExifInfo, type ExifInfo } from "@/lib/exif-info";
 import { exportLibraryFile, loadLibrary, renameLibraryFile } from "@/lib/photo-library";
 import { createRawPreview } from "@/lib/raw-preview";
 import { type LibraryFile, formatBytes, sanitizeBaseName } from "@/lib/raw-files";
 
 type PreviewState = { status: "idle" | "loading" | "ready" | "failed"; uri: string | null; message: string | null };
+type ExifState = { status: "idle" | "loading" | "ready"; info: ExifInfo | null };
 
 function hapticSuccess() {
   if (Platform.OS !== "web") void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -27,6 +29,8 @@ export default function DetailScreen() {
   const [draft, setDraft] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExifVisible, setIsExifVisible] = useState(false);
+  const [exifState, setExifState] = useState<ExifState>({ status: "idle", info: null });
   const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({ status: "idle", uri: null, message: null });
   const [retryCount, setRetryCount] = useState(0);
@@ -87,6 +91,18 @@ export default function DetailScreen() {
     setIsRenameVisible(true);
   }, [file]);
 
+  const loadExif = useCallback(async () => {
+    if (!file) return;
+    setExifState({ status: "loading", info: null });
+    const info = await readExifInfo(file.uri);
+    setExifState({ status: "ready", info });
+  }, [file]);
+
+  const openExif = useCallback(() => {
+    setIsExifVisible(true);
+    void loadExif();
+  }, [loadExif]);
+
   const confirmRename = useCallback(async () => {
     if (!file) return;
     const cleanName = sanitizeBaseName(draft);
@@ -139,6 +155,7 @@ export default function DetailScreen() {
     : file.renameSyncStatus === "copy_only"
       ? "已改本地副本 / 原文件未改"
       : "当前管理应用本地副本";
+  const exifRows = exifState.info ? getExifDisplayRows(exifState.info) : [];
 
   return (
     <GestureDetector gesture={edgeBackGesture}>
@@ -163,10 +180,14 @@ export default function DetailScreen() {
             {notice && <View style={styles.notice}><MaterialIcons name="check-circle" size={17} color="#69C99A" /><Text style={styles.noticeText} numberOfLines={1}>{notice}</Text></View>}
             <View style={styles.hintRow}><MaterialIcons name="swipe-right" size={16} color="#7E8B95" /><Text style={styles.hintText}>从左侧边缘右滑，返回上一视图</Text></View>
             <View style={styles.fileActions}><Pressable onPress={handleExport} disabled={isExporting} style={({ pressed }) => [styles.exportButton, (pressed || isExporting) && styles.renameButtonPressed]}>{isExporting ? <ActivityIndicator size="small" color="#F4D298" /> : <MaterialIcons name="folder-open" size={19} color="#F4D298" />}<Text style={styles.exportButtonText}>{isExporting ? "正在导出" : "导出副本"}</Text></Pressable><Pressable onPress={openRename} style={({ pressed }) => [styles.renameButton, pressed && styles.renameButtonPressed]}><MaterialIcons name="drive-file-rename-outline" size={21} color="#11161C" /><Text style={styles.renameButtonText}>重命名</Text></Pressable></View>
+            <Pressable onPress={openExif} style={({ pressed }) => [styles.exifButton, pressed && styles.renameButtonPressed]}><MaterialIcons name="photo-camera" size={18} color="#A9D7F7" /><Text style={styles.exifButtonText}>查看 EXIF 信息</Text><MaterialIcons name="chevron-right" size={20} color="#79BCE7" /></Pressable>
           </View>
 
           <Modal visible={isRenameVisible} transparent animationType="slide" onRequestClose={() => setIsRenameVisible(false)}>
             <View style={styles.modalBackdrop}><View style={styles.modalSheet}><View style={styles.handle} /><Text style={styles.modalTitle}>重命名文件</Text><Text style={styles.modalDescription}>扩展名将保持为 .{file.extension.toUpperCase()}，确认后会验证文件库记录。</Text><View style={styles.inputRow}><TextInput value={draft} onChangeText={setDraft} autoFocus maxLength={96} returnKeyType="done" onSubmitEditing={() => canConfirm && confirmRename()} style={styles.input} placeholder="输入文件名" placeholderTextColor="#62717D" selectionColor="#D7983D" />{draft && <Pressable onPress={() => setDraft("")} style={styles.clearButton}><MaterialIcons name="close" size={17} color="#AAB4BE" /></Pressable>}<Text style={styles.extension}>.{file.extension}</Text></View><Text style={styles.saveAs}>将保存为：{proposedName || "请输入有效名称"}</Text><View style={styles.actions}><Pressable onPress={() => setIsRenameVisible(false)} disabled={isSaving} style={styles.cancelButton}><Text style={styles.cancelText}>取消</Text></Pressable><Pressable onPress={confirmRename} disabled={!canConfirm} style={[styles.confirmButton, !canConfirm && styles.confirmDisabled]}>{isSaving ? <ActivityIndicator color="#11161C" /> : <Text style={styles.confirmText}>确认并保存</Text>}</Pressable></View></View></View>
+          </Modal>
+          <Modal visible={isExifVisible} transparent animationType="slide" onRequestClose={() => setIsExifVisible(false)}>
+            <View style={styles.modalBackdrop}><View style={styles.exifSheet}><View style={styles.handle} /><View style={styles.exifHeading}><View style={styles.exifTitleBox}><Text style={styles.modalTitle}>EXIF 信息</Text><Text style={styles.modalDescription}>读取应用本地副本中的拍摄与图像元数据。</Text></View><View style={styles.exifIcon}><MaterialIcons name="info-outline" size={21} color="#A9D7F7" /></View></View><ScrollView style={styles.exifScroll} contentContainerStyle={styles.exifContent} showsVerticalScrollIndicator={false}>{exifState.status === "loading" ? <View style={styles.exifLoading}><ActivityIndicator color="#79BCE7" /><Text style={styles.exifMessage}>正在读取 EXIF 信息</Text></View> : <>{exifState.info && <View style={[styles.exifNotice, exifState.info.status === "available" ? styles.exifNoticeAvailable : styles.exifNoticeUnavailable]}><MaterialIcons name={exifState.info.status === "available" ? "check-circle-outline" : "info-outline"} size={17} color={exifState.info.status === "available" ? "#82D5AF" : "#F4D298"} /><Text style={styles.exifMessage}>{exifState.info.message}</Text></View>}{exifRows.length > 0 ? <View style={styles.exifRows}>{exifRows.map((row) => <View key={row.label} style={styles.exifRow}><Text style={styles.exifLabel}>{row.label}</Text><Text style={styles.exifValue}>{row.value}</Text></View>)}</View> : exifState.info && <View style={styles.exifEmpty}><MaterialIcons name="image-not-supported" size={34} color="#71808C" /><Text style={styles.exifEmptyText}>没有可显示的拍摄参数</Text></View>}</>}</ScrollView><View style={styles.actions}><Pressable onPress={() => void loadExif()} disabled={exifState.status === "loading"} style={[styles.cancelButton, exifState.status === "loading" && styles.confirmDisabled]}><Text style={styles.cancelText}>重新读取</Text></Pressable><Pressable onPress={() => setIsExifVisible(false)} style={styles.exifCloseButton}><Text style={styles.exifCloseText}>完成</Text></Pressable></View></View></View>
           </Modal>
         </ScreenContainer>
       </Animated.View>
@@ -207,12 +228,31 @@ const styles = StyleSheet.create({
   renameButton: { height: 50, flex: 1.25, borderRadius: 15, backgroundColor: "#D7983D", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
   exportButton: { height: 50, flex: 1, borderRadius: 15, borderWidth: 1, borderColor: "#71582F", backgroundColor: "#382D20", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 7 },
   exportButtonText: { color: "#F4D298", fontSize: 13, fontWeight: "800" },
+  exifButton: { minHeight: 46, marginTop: 10, borderRadius: 14, borderWidth: 1, borderColor: "#315069", backgroundColor: "#172633", paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 8 },
+  exifButtonText: { flex: 1, color: "#C5E5FA", fontSize: 13, fontWeight: "800" },
   renameButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
   renameButtonText: { color: "#11161C", fontSize: 14, fontWeight: "800" },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(4, 7, 10, 0.72)", justifyContent: "flex-end" },
   modalSheet: { backgroundColor: "#1B242D", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 22, paddingBottom: 28, paddingTop: 9, borderTopWidth: 1, borderColor: "#394955" },
+  exifSheet: { maxHeight: "78%", backgroundColor: "#1B242D", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 22, paddingBottom: 28, paddingTop: 9, borderTopWidth: 1, borderColor: "#394955" },
   modalTitle: { color: "#F4F1EA", fontSize: 19, lineHeight: 25, fontWeight: "800" },
   modalDescription: { color: "#AAB4BE", fontSize: 12, lineHeight: 18, marginTop: 5 },
+  exifHeading: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 16 },
+  exifTitleBox: { flex: 1 },
+  exifIcon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", backgroundColor: "#172633", borderWidth: 1, borderColor: "#315069" },
+  exifScroll: { marginTop: 16 },
+  exifContent: { paddingBottom: 4 },
+  exifLoading: { minHeight: 180, alignItems: "center", justifyContent: "center", gap: 12 },
+  exifNotice: { minHeight: 42, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, flexDirection: "row", alignItems: "center", gap: 8 },
+  exifNoticeAvailable: { backgroundColor: "#19352C" },
+  exifNoticeUnavailable: { backgroundColor: "#382D20" },
+  exifMessage: { flex: 1, color: "#E9EEF1", fontSize: 12, lineHeight: 17, fontWeight: "600" },
+  exifRows: { marginTop: 12, borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: "#344551", backgroundColor: "#11161C" },
+  exifRow: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#344551" },
+  exifLabel: { color: "#AAB4BE", fontSize: 12, fontWeight: "700" },
+  exifValue: { flex: 1, textAlign: "right", color: "#F4F1EA", fontSize: 12, lineHeight: 17, fontWeight: "700" },
+  exifEmpty: { minHeight: 160, alignItems: "center", justifyContent: "center", gap: 10 },
+  exifEmptyText: { color: "#AAB4BE", fontSize: 13, fontWeight: "700" },
   inputRow: { marginTop: 20, minHeight: 52, borderRadius: 14, borderWidth: 1, borderColor: "#586976", backgroundColor: "#11161C", flexDirection: "row", alignItems: "center", paddingHorizontal: 14 },
   input: { flex: 1, color: "#F4F1EA", fontSize: 15, paddingVertical: 12, minWidth: 0 },
   clearButton: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: "#26333E" },
@@ -222,8 +262,10 @@ const styles = StyleSheet.create({
   cancelButton: { height: 48, flex: 1, borderRadius: 14, borderWidth: 1, borderColor: "#4D5C67", alignItems: "center", justifyContent: "center" },
   cancelText: { color: "#E3E7E8", fontSize: 14, fontWeight: "800" },
   confirmButton: { height: 48, flex: 1.6, borderRadius: 14, backgroundColor: "#D7983D", alignItems: "center", justifyContent: "center" },
+  exifCloseButton: { height: 48, flex: 1.6, borderRadius: 14, backgroundColor: "#79BCE7", alignItems: "center", justifyContent: "center" },
   confirmDisabled: { opacity: 0.42 },
   confirmText: { color: "#11161C", fontSize: 14, fontWeight: "800" },
+  exifCloseText: { color: "#10212C", fontSize: 14, fontWeight: "800" },
   loadingText: { marginTop: 12, color: "#AAB4BE", fontSize: 13 },
   missingTitle: { color: "#F4F1EA", fontSize: 19, fontWeight: "800", marginTop: 15 },
   missingText: { color: "#AAB4BE", textAlign: "center", fontSize: 13, lineHeight: 20, marginTop: 6 },

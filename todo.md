@@ -49,3 +49,7 @@
 - [x] 配置 RAW View Android Release 签名密钥与 GitHub Secrets
 - [x] 新增 GitHub Actions 自动构建签名 APK 并发布 Release 的工作流
 - [x] 核验 GitHub Actions 构建与 GitHub Release APK 产物
+- [x] 设计并实现本地图片 EXIF 元数据读取模型与 Android 原生桥接
+- [x] 在文件详情页展示拍摄与图像 EXIF 信息，并为缺失或不支持的 RAW 元数据提供降级提示
+- [x] 通过单元测试、类型检查、静态检查和 Android 原生注入验证 EXIF 信息展示与降级提示
+- [ ] 在真实 Android 发布构建中验证 JPEG、PNG 与 RAW 文件的 EXIF 信息展示和异常提示
