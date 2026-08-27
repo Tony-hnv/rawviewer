@@ -61,4 +61,4 @@
 - [x] 将 RAW View 1.1.0 的新功能、依赖与文档提交并同步到 GitHub main
 - [x] 核验 GitHub main 已包含 RAW View 1.1.0 的最新提交
 - [x] 定位 GitHub Actions Android Release 构建失败的根本原因：EXIF 复制/分享模块未写入 package 依赖与锁文件，导致 Metro 无法解析 expo-clipboard
-- [ ] 修复 GitHub Actions 发布构建配置并重新核验签名 APK 产物
+- [x] 修复 GitHub Actions 发布构建配置并重新核验签名 APK 产物
