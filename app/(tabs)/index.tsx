@@ -28,9 +28,9 @@ import Animated, {
 import { ScreenContainer } from "@/components/screen-container";
 import { pickWritableDocuments } from "@/lib/local-file-bridge";
 import {
-  clearImportedLibrary,
   importAssets,
   loadLibrary,
+  removeLibraryFiles,
   renameLibraryFile,
   saveLibrary,
 } from "@/lib/photo-library";
@@ -111,6 +111,8 @@ export default function LibraryScreen() {
   const [isImporting, setIsImporting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [selectedFile, setSelectedFile] = useState<LibraryFile | null>(null);
   const [isSupportVisible, setIsSupportVisible] = useState(false);
   const [isRenameVisible, setIsRenameVisible] = useState(false);
@@ -128,11 +130,21 @@ export default function LibraryScreen() {
   const rawPreviewCache = useRef<Record<string, string>>({});
   const detailOffsetX = useSharedValue(0);
 
-  const refreshLibrary = useCallback(async () => {
+  const refreshLibrary = useCallback(async (): Promise<LibraryFile[]> => {
     setIsLoading(true);
     const savedFiles = await loadLibrary();
-    setFiles(savedFiles.sort((a, b) => b.importedAt - a.importedAt));
+    const orderedFiles = savedFiles.sort((a, b) => b.importedAt - a.importedAt);
+    setFiles(orderedFiles);
+    setSelectedIds(
+      (current) =>
+        new Set(
+          [...current].filter((id) =>
+            orderedFiles.some((file) => file.id === id),
+          ),
+        ),
+    );
     setIsLoading(false);
+    return orderedFiles;
   }, []);
 
   useFocusEffect(
@@ -150,6 +162,11 @@ export default function LibraryScreen() {
     () => files.filter((file) => file.kind === "raw").length,
     [files],
   );
+
+  const selectedCount = selectedIds.size;
+  const isAllFilteredSelected =
+    filteredFiles.length > 0 &&
+    filteredFiles.every((file) => selectedIds.has(file.id));
 
   const handleImport = useCallback(async () => {
     setIsImporting(true);
@@ -189,22 +206,33 @@ export default function LibraryScreen() {
     }
   }, [files]);
 
-  const clearImportedPhotos = useCallback(async () => {
-    if (files.length === 0) return;
+  const clearSelectedPhotos = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    const requestedIds = new Set(selectedIds);
     setIsClearing(true);
     try {
-      const result = await clearImportedLibrary();
-      setFiles([]);
-      rawPreviewCache.current = {};
+      const result = await removeLibraryFiles(requestedIds);
+      const remainingFiles = await refreshLibrary();
+      setSelectedIds(
+        new Set(
+          [...requestedIds].filter((id) =>
+            remainingFiles.some((file) => file.id === id),
+          ),
+        ),
+      );
+      if (result.remaining === 0 || result.cleared === requestedIds.size) {
+        setIsSelectionMode(false);
+      }
+      for (const id of requestedIds) delete rawPreviewCache.current[id];
       feedback("success");
-      if (result.remaining > 0) {
+      if (result.failed > 0) {
         Alert.alert(
           "部分本地副本未清除",
-          `已清除 ${result.cleared} 个应用本地副本，仍有 ${result.remaining} 个副本保留。原始文件从未被删除，可稍后重试。`,
+          `已清除 ${result.cleared} 个所选应用本地副本，${result.failed} 个副本仍保留。原始文件从未被删除，可重新选择后重试。`,
         );
       } else {
         Alert.alert(
-          "已清除本地图库",
+          "已清除所选图片",
           `已移除 ${result.cleared} 个应用本地副本。设备原始文件未被修改或删除。`,
         );
       }
@@ -219,23 +247,60 @@ export default function LibraryScreen() {
     } finally {
       setIsClearing(false);
     }
-  }, [files.length, refreshLibrary]);
+  }, [refreshLibrary, selectedIds]);
 
-  const requestClearImportedPhotos = useCallback(() => {
-    if (files.length === 0 || isClearing) return;
+  const requestClearSelectedPhotos = useCallback(() => {
+    if (selectedCount === 0 || isClearing) return;
     Alert.alert(
-      "清除已导入图片？",
-      `将移除 RAW View 中的 ${files.length} 个应用本地副本及其图库记录。设备原始文件不会被删除。`,
+      `清除 ${selectedCount} 张已选图片？`,
+      `将移除这 ${selectedCount} 个 RAW View 应用本地副本及其图库记录。设备原始文件不会被删除。`,
       [
         { text: "取消", style: "cancel" },
         {
-          text: "清除本地副本",
+          text: "清除所选副本",
           style: "destructive",
-          onPress: () => void clearImportedPhotos(),
+          onPress: () => void clearSelectedPhotos(),
         },
       ],
     );
-  }, [clearImportedPhotos, files.length, isClearing]);
+  }, [clearSelectedPhotos, isClearing, selectedCount]);
+
+  const beginSelection = useCallback((id?: string) => {
+    setIsSelectionMode(true);
+    setSelectedIds((current) => {
+      if (!id) return new Set();
+      return current.size > 0 ? new Set([...current, id]) : new Set([id]);
+    });
+    feedback("light");
+  }, []);
+
+  const toggleSelectedFile = useCallback((id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    feedback("light");
+  }, []);
+
+  const toggleSelectAllFiltered = useCallback(() => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (isAllFilteredSelected) {
+        for (const file of filteredFiles) next.delete(file.id);
+      } else {
+        for (const file of filteredFiles) next.add(file.id);
+      }
+      return next;
+    });
+    feedback("light");
+  }, [filteredFiles, isAllFilteredSelected]);
+
+  const exitSelection = useCallback(() => {
+    setIsSelectionMode(false);
+    setSelectedIds(new Set());
+  }, []);
 
   const openFile = useCallback(
     (file: LibraryFile) => {
@@ -574,23 +639,19 @@ export default function LibraryScreen() {
         <View style={styles.headerActions}>
           {files.length > 0 && (
             <Pressable
-              onPress={requestClearImportedPhotos}
-              disabled={isClearing}
+              onPress={() => beginSelection()}
+              disabled={isClearing || isSelectionMode}
               style={({ pressed }) => [
-                styles.clearLibraryButton,
-                (pressed || isClearing) && styles.pressed,
+                styles.selectLibraryButton,
+                (pressed || isClearing || isSelectionMode) && styles.pressed,
               ]}
-              accessibilityLabel="清除已导入图片"
+              accessibilityLabel="选择图片进行清除"
             >
-              {isClearing ? (
-                <ActivityIndicator size="small" color="#F6AAA1" />
-              ) : (
-                <MaterialIcons
-                  name="delete-outline"
-                  size={22}
-                  color="#F6AAA1"
-                />
-              )}
+              <MaterialIcons
+                name="playlist-add-check"
+                size={22}
+                color="#C5E5FA"
+              />
             </Pressable>
           )}
           <Pressable
@@ -646,9 +707,16 @@ export default function LibraryScreen() {
           }
           renderItem={({ item }) => (
             <Pressable
-              onPress={() => openFile(item)}
+              onPress={() =>
+                isSelectionMode ? toggleSelectedFile(item.id) : openFile(item)
+              }
+              onLongPress={() => beginSelection(item.id)}
+              delayLongPress={320}
               style={({ pressed }) => [
                 styles.fileCard,
+                isSelectionMode &&
+                  selectedIds.has(item.id) &&
+                  styles.fileCardSelected,
                 pressed && styles.fileCardPressed,
               ]}
             >
@@ -682,7 +750,19 @@ export default function LibraryScreen() {
                   </Text>
                 </View>
               </View>
-              <MaterialIcons name="chevron-right" size={24} color="#62717D" />
+              {isSelectionMode ? (
+                <MaterialIcons
+                  name={
+                    selectedIds.has(item.id)
+                      ? "check-circle"
+                      : "radio-button-unchecked"
+                  }
+                  size={24}
+                  color={selectedIds.has(item.id) ? "#D7983D" : "#71808C"}
+                />
+              ) : (
+                <MaterialIcons name="chevron-right" size={24} color="#62717D" />
+              )}
             </Pressable>
           )}
           ListEmptyComponent={
@@ -701,27 +781,76 @@ export default function LibraryScreen() {
       )}
 
       <View style={styles.importDock}>
-        <Pressable
-          onPress={handleImport}
-          disabled={isImporting}
-          style={({ pressed }) => [
-            styles.importButton,
-            (pressed || isImporting) && styles.primaryButtonPressed,
-          ]}
-        >
-          {isImporting ? (
-            <ActivityIndicator color="#11161C" />
-          ) : (
-            <MaterialIcons
-              name="add-photo-alternate"
-              size={22}
-              color="#11161C"
-            />
-          )}
-          <Text style={styles.importButtonText}>
-            {isImporting ? "正在导入…" : "导入文件"}
-          </Text>
-        </Pressable>
+        {isSelectionMode ? (
+          <View style={styles.selectionDockRow}>
+            <Pressable
+              onPress={toggleSelectAllFiltered}
+              disabled={filteredFiles.length === 0 || isClearing}
+              style={({ pressed }) => [
+                styles.selectionSecondaryButton,
+                (pressed || isClearing) && styles.pressed,
+              ]}
+            >
+              <Text style={styles.selectionSecondaryText}>
+                {isAllFilteredSelected ? "取消全选" : "全选当前"}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={exitSelection}
+              disabled={isClearing}
+              style={({ pressed }) => [
+                styles.selectionSecondaryButton,
+                (pressed || isClearing) && styles.pressed,
+              ]}
+            >
+              <Text style={styles.selectionSecondaryText}>取消</Text>
+            </Pressable>
+            <Pressable
+              onPress={requestClearSelectedPhotos}
+              disabled={selectedCount === 0 || isClearing}
+              style={({ pressed }) => [
+                styles.selectionDeleteButton,
+                selectedCount === 0 && styles.selectionDeleteDisabled,
+                (pressed || isClearing) && styles.pressed,
+              ]}
+            >
+              {isClearing ? (
+                <ActivityIndicator size="small" color="#FBE9E7" />
+              ) : (
+                <MaterialIcons
+                  name="delete-outline"
+                  size={19}
+                  color="#FBE9E7"
+                />
+              )}
+              <Text style={styles.selectionDeleteText}>
+                删除 {selectedCount || ""}
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            onPress={handleImport}
+            disabled={isImporting}
+            style={({ pressed }) => [
+              styles.importButton,
+              (pressed || isImporting) && styles.primaryButtonPressed,
+            ]}
+          >
+            {isImporting ? (
+              <ActivityIndicator color="#11161C" />
+            ) : (
+              <MaterialIcons
+                name="add-photo-alternate"
+                size={22}
+                color="#11161C"
+              />
+            )}
+            <Text style={styles.importButtonText}>
+              {isImporting ? "正在导入…" : "导入文件"}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       <SupportModal
@@ -947,15 +1076,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#1B242D",
   },
   headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  clearLibraryButton: {
+  selectLibraryButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#382225",
+    backgroundColor: "#172633",
     borderWidth: 1,
-    borderColor: "#6D3B40",
+    borderColor: "#315069",
   },
   pressed: { opacity: 0.68 },
   filterRow: {
@@ -994,6 +1123,7 @@ const styles = StyleSheet.create({
     borderColor: "#26333E",
   },
   fileCardPressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
+  fileCardSelected: { borderColor: "#D7983D", backgroundColor: "#2B2B25" },
   thumbnail: {
     width: 60,
     height: 60,
@@ -1109,6 +1239,28 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   importButtonText: { color: "#11161C", fontSize: 15, fontWeight: "800" },
+  selectionDockRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  selectionSecondaryButton: {
+    height: 50,
+    paddingHorizontal: 11,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#4C5E6A",
+    justifyContent: "center",
+  },
+  selectionSecondaryText: { color: "#D5DCE3", fontSize: 12, fontWeight: "800" },
+  selectionDeleteButton: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: "#A63D3B",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  selectionDeleteDisabled: { opacity: 0.42 },
+  selectionDeleteText: { color: "#FBE9E7", fontSize: 13, fontWeight: "800" },
   detailHeader: {
     height: 64,
     paddingHorizontal: 16,

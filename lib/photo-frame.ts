@@ -91,6 +91,7 @@ export async function createFramedLibraryCopy(
     theme.backgroundColor,
     theme.foregroundColor,
     text,
+    request.style === "brand" ? request.brandMark : "",
   );
   const outputInfo = await FileSystem.getInfoAsync(result.uri);
   if (

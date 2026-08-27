@@ -73,20 +73,30 @@ export function isManagedLibraryUri(uri: string): boolean {
 }
 
 /**
- * Clears only copies created in RAW View's private directory. Source documents are never deleted.
- * Records for any local copy that cannot be removed are retained so the user can retry safely.
+ * Removes only selected copies created in RAW View's private directory. Source documents are never
+ * deleted; unselected items and entries whose local file cannot be removed stay in the library.
  */
-export async function clearImportedLibrary(): Promise<{
+export async function removeLibraryFiles(
+  selectedIds: Iterable<string>,
+): Promise<{
   cleared: number;
   remaining: number;
+  failed: number;
 }> {
+  const selected = new Set(selectedIds);
   const storedFiles = await loadLibrary();
   const remainingFiles: LibraryFile[] = [];
   let cleared = 0;
+  let failed = 0;
 
   for (const file of storedFiles) {
+    if (!selected.has(file.id)) {
+      remainingFiles.push(file);
+      continue;
+    }
     if (!isManagedLibraryUri(file.uri)) {
       remainingFiles.push(file);
+      failed += 1;
       continue;
     }
     try {
@@ -94,6 +104,7 @@ export async function clearImportedLibrary(): Promise<{
       cleared += 1;
     } catch {
       remainingFiles.push(file);
+      failed += 1;
     }
   }
 
@@ -102,7 +113,17 @@ export async function clearImportedLibrary(): Promise<{
   if (verified.length !== remainingFiles.length) {
     throw new Error("本地图库记录未能完成更新，请重新打开应用后重试。");
   }
-  return { cleared, remaining: verified.length };
+  return { cleared, remaining: verified.length, failed };
+}
+
+/** Safely clears all files only when the caller intentionally passes every library record. */
+export async function clearImportedLibrary(): Promise<{
+  cleared: number;
+  remaining: number;
+}> {
+  const files = await loadLibrary();
+  const result = await removeLibraryFiles(files.map((file) => file.id));
+  return { cleared: result.cleared, remaining: result.remaining };
 }
 
 export async function importAssets(assets: ImportAsset[]): Promise<{

@@ -44,6 +44,7 @@ interface RawDecoderNativeModule {
     title: string,
     subtitle: string,
     details: string,
+    brandMark: string,
   ): Promise<FramedImageResult>;
 }
 
@@ -143,6 +144,7 @@ export async function renderPhotoFrameIntoLibrary(
   backgroundColor: string,
   foregroundColor: string,
   text: { title: string; subtitle: string; details: string },
+  brandMark: string,
 ): Promise<FramedImageResult> {
   if (Platform.OS !== "android") {
     throw new Error(
@@ -159,6 +161,7 @@ export async function renderPhotoFrameIntoLibrary(
     text.title,
     text.subtitle,
     text.details,
+    brandMark,
   );
 }
 

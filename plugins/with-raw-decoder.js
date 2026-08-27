@@ -303,6 +303,36 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
     canvas.drawText(text, x, y, paint)
   }
 
+  private fun drawBrandBadge(
+    canvas: Canvas,
+    brandMark: String,
+    left: Float,
+    top: Float,
+    size: Float,
+    foreground: Int,
+  ) {
+    if (brandMark.isBlank()) return
+    val isPhone = brandMark in setOf("Apple", "Samsung", "Google", "Huawei", "Xiaomi", "OPPO", "vivo")
+    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = foreground
+      style = Paint.Style.STROKE
+      strokeWidth = max(2f, size * 0.045f)
+    }
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = foreground
+      style = Paint.Style.FILL
+    }
+    if (isPhone) {
+      canvas.drawRoundRect(left, top, left + size * 0.58f, top + size, size * 0.1f, size * 0.1f, stroke)
+      canvas.drawCircle(left + size * 0.29f, top + size * 0.84f, max(1.5f, size * 0.025f), fill)
+    } else {
+      val bodyTop = top + size * 0.27f
+      canvas.drawRoundRect(left, bodyTop, left + size, top + size * 0.84f, size * 0.1f, size * 0.1f, stroke)
+      canvas.drawCircle(left + size * 0.5f, top + size * 0.55f, size * 0.18f, stroke)
+      canvas.drawRect(left + size * 0.12f, top + size * 0.15f, left + size * 0.37f, bodyTop, stroke)
+    }
+  }
+
   @ReactMethod
   fun createPhotoFrame(
     localUri: String,
@@ -314,6 +344,7 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
     title: String,
     subtitle: String,
     details: String,
+    brandMark: String,
     promise: Promise,
   ) {
     var uprightBitmap: Bitmap? = null
@@ -335,10 +366,17 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       val background = frameColor(backgroundColor, Color.WHITE)
       val foreground = frameColor(foregroundColor, Color.BLACK)
       canvas.drawColor(background)
+      val contentWidth = outputWidth - sideInset * 2
+      val contentHeight = outputHeight - sideInset - bottomInset
+      val scale = min(contentWidth.toFloat() / upright.width, contentHeight.toFloat() / upright.height)
+      val drawWidth = (upright.width * scale).roundToInt()
+      val drawHeight = (upright.height * scale).roundToInt()
+      val drawLeft = sideInset + (contentWidth - drawWidth) / 2
+      val drawTop = sideInset + (contentHeight - drawHeight) / 2
       canvas.drawBitmap(
         upright,
         null,
-        Rect(sideInset, sideInset, sideInset + upright.width, sideInset + upright.height),
+        Rect(drawLeft, drawTop, drawLeft + drawWidth, drawTop + drawHeight),
         Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
       )
 
@@ -354,6 +392,14 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
         drawFrameText(canvas, title, textX, titleY, titleSize, foreground, bold = true)
         drawFrameText(canvas, subtitle, textX, subtitleY, subtitleSize, foreground)
         drawFrameText(canvas, details, textX, detailY, detailSize, foreground, bold = true)
+        drawBrandBadge(
+          canvas,
+          brandMark,
+          outputWidth - sideInset - min(bottomInset * 0.55f, 72f),
+          captionTop + bottomInset * 0.18f,
+          min(bottomInset * 0.55f, 72f),
+          foreground,
+        )
       }
 
       val destinationFile = File(requireNotNull(Uri.parse(destinationUri).path) { "Destination path is unavailable." })

@@ -92,6 +92,54 @@ export const BRAND_MARKS: BrandMarkId[] = [
   "vivo",
 ];
 
+const PHONE_BRANDS = new Set<BrandMarkId>([
+  "Apple",
+  "Samsung",
+  "Google",
+  "Huawei",
+  "Xiaomi",
+  "OPPO",
+  "vivo",
+]);
+
+export function isPhoneBrand(brand: BrandMarkId): boolean {
+  return PHONE_BRANDS.has(brand);
+}
+
+export function getBrandMonogram(brand: BrandMarkId): string {
+  if (brand === "Hasselblad") return "H";
+  if (brand === "Fujifilm") return "F";
+  return brand.slice(0, 1).toUpperCase();
+}
+
+export function getContainedFrameImageRect(
+  sourceWidth: number,
+  sourceHeight: number,
+  availableWidth: number,
+  availableHeight: number,
+): { left: number; top: number; width: number; height: number } {
+  if (
+    sourceWidth <= 0 ||
+    sourceHeight <= 0 ||
+    availableWidth <= 0 ||
+    availableHeight <= 0
+  ) {
+    return { left: 0, top: 0, width: 0, height: 0 };
+  }
+  const scale = Math.min(
+    availableWidth / sourceWidth,
+    availableHeight / sourceHeight,
+  );
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+  return {
+    left: (availableWidth - width) / 2,
+    top: (availableHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
 function numberText(value: number, digits = 1): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(digits);
 }

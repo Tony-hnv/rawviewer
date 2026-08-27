@@ -15,6 +15,8 @@ import {
   PHOTO_FRAME_STYLES,
   PHOTO_FRAME_THEMES,
   buildFrameText,
+  getBrandMonogram,
+  isPhoneBrand,
   type BrandMarkId,
   type PhotoFrameRequest,
   type PhotoFrameStyle,
@@ -200,6 +202,29 @@ export function PhotoFrameEditor({
                       (pressed || isSaving) && styles.pressed,
                     ]}
                   >
+                    <View
+                      style={[
+                        styles.brandIcon,
+                        value.brandMark === brand && styles.brandIconActive,
+                      ]}
+                    >
+                      <MaterialIcons
+                        name={isPhoneBrand(brand) ? "smartphone" : "camera-alt"}
+                        size={13}
+                        color={
+                          value.brandMark === brand ? "#1A1610" : "#AAB4BE"
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.brandMonogram,
+                          value.brandMark === brand &&
+                            styles.brandMonogramActive,
+                        ]}
+                      >
+                        {getBrandMonogram(brand)}
+                      </Text>
+                    </View>
                     <Text
                       style={[
                         styles.brandText,
@@ -370,6 +395,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#3B4A55",
     backgroundColor: "#121A21",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     justifyContent: "center",
     paddingHorizontal: 11,
   },
@@ -381,6 +409,20 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   brandTextActive: { color: "#F4D298" },
+  brandIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "#52616E",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 1,
+  },
+  brandIconActive: { backgroundColor: "#F4D298", borderColor: "#F4D298" },
+  brandMonogram: { color: "#AAB4BE", fontSize: 7, fontWeight: "900" },
+  brandMonogramActive: { color: "#1A1610" },
   infoNotice: {
     marginTop: 12,
     minHeight: 36,

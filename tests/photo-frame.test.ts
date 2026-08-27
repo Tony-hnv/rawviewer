@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildFrameText,
+  getContainedFrameImageRect,
+  getBrandMonogram,
+  isPhoneBrand,
   type PhotoFrameRequest,
 } from "../lib/photo-frame-math";
 import type { LibraryFile } from "@/lib/raw-files";
@@ -55,5 +58,22 @@ describe("photo frame metadata", () => {
     expect(text.title).toBe("XIAOMI");
     expect(text.subtitle).toBe("harbor.jpg");
     expect(text.details).toBe("本地图片副本");
+  });
+
+  it("contains the source image without changing its aspect ratio", () => {
+    const rect = getContainedFrameImageRect(400, 300, 600, 250);
+    expect(rect).toEqual({
+      left: 133.33333333333331,
+      top: 0,
+      width: 333.33333333333337,
+      height: 250,
+    });
+    expect(rect.width / rect.height).toBeCloseTo(400 / 300);
+  });
+
+  it("distinguishes camera and phone brands for visual icon badges", () => {
+    expect(isPhoneBrand("Apple")).toBe(true);
+    expect(isPhoneBrand("Nikon")).toBe(false);
+    expect(getBrandMonogram("Sony")).toBe("S");
   });
 });
