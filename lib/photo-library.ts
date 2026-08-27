@@ -2,7 +2,11 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as FileSystem from "expo-file-system/legacy";
 import type { DocumentPickerAsset } from "expo-document-picker";
 
-import { copyFileIntoLibrary, exportLibraryCopy, renameLibraryCopy } from "@/lib/local-file-bridge";
+import {
+  copyFileIntoLibrary,
+  exportLibraryCopy,
+  renameLibraryCopy,
+} from "@/lib/local-file-bridge";
 
 import {
   type LibraryFile,
@@ -27,7 +31,10 @@ async function ensureLibraryDirectory() {
   });
 }
 
-async function getAvailableFileName(fileName: string, sourceUri?: string): Promise<string> {
+async function getAvailableFileName(
+  fileName: string,
+  sourceUri?: string,
+): Promise<string> {
   const lastDot = fileName.lastIndexOf(".");
   const rawBaseName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
   const extension = lastDot > 0 ? fileName.slice(lastDot) : "";
@@ -61,6 +68,43 @@ export async function saveLibrary(files: LibraryFile[]) {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(files));
 }
 
+export function isManagedLibraryUri(uri: string): boolean {
+  return uri.startsWith(LIBRARY_DIRECTORY);
+}
+
+/**
+ * Clears only copies created in RAW View's private directory. Source documents are never deleted.
+ * Records for any local copy that cannot be removed are retained so the user can retry safely.
+ */
+export async function clearImportedLibrary(): Promise<{
+  cleared: number;
+  remaining: number;
+}> {
+  const storedFiles = await loadLibrary();
+  const remainingFiles: LibraryFile[] = [];
+  let cleared = 0;
+
+  for (const file of storedFiles) {
+    if (!isManagedLibraryUri(file.uri)) {
+      remainingFiles.push(file);
+      continue;
+    }
+    try {
+      await FileSystem.deleteAsync(file.uri, { idempotent: true });
+      cleared += 1;
+    } catch {
+      remainingFiles.push(file);
+    }
+  }
+
+  await saveLibrary(remainingFiles);
+  const verified = await loadLibrary();
+  if (verified.length !== remainingFiles.length) {
+    throw new Error("本地图库记录未能完成更新，请重新打开应用后重试。");
+  }
+  return { cleared, remaining: verified.length };
+}
+
 export async function importAssets(assets: ImportAsset[]): Promise<{
   imported: LibraryFile[];
   skipped: string[];
@@ -91,7 +135,9 @@ export async function importAssets(assets: ImportAsset[]): Promise<{
       brand: descriptor.brand,
       uri: localUri,
       sourceUri: asset.uri,
-      size: localInfo.exists ? localInfo.size ?? asset.size ?? 0 : asset.size ?? 0,
+      size: localInfo.exists
+        ? (localInfo.size ?? asset.size ?? 0)
+        : (asset.size ?? 0),
       importedAt: Date.now(),
     });
   }
@@ -102,18 +148,32 @@ export async function importAssets(assets: ImportAsset[]): Promise<{
 export async function renameLibraryFile(
   file: LibraryFile,
   requestedBaseName: string,
-): Promise<{ file: LibraryFile; sourceRenamed: boolean; sourceRenameError?: string | null }> {
+): Promise<{
+  file: LibraryFile;
+  sourceRenamed: boolean;
+  sourceRenameError?: string | null;
+}> {
   await ensureLibraryDirectory();
-  const requestedName = createFileName(requestedBaseName, file.extension as SupportedExtension);
+  const requestedName = createFileName(
+    requestedBaseName,
+    file.extension as SupportedExtension,
+  );
   if (requestedName === file.fileName) {
-    return { file, sourceRenamed: file.renameSyncStatus === "original_and_copy" };
+    return {
+      file,
+      sourceRenamed: file.renameSyncStatus === "original_and_copy",
+    };
   }
 
   const destinationName = await getAvailableFileName(requestedName, file.uri);
   const destination = `${LIBRARY_DIRECTORY}${destinationName}`;
-  const result = await renameLibraryCopy(file.uri, file.sourceUri, destinationName);
+  const result = await renameLibraryCopy(
+    file.uri,
+    file.sourceUri,
+    destinationName,
+  );
   const renamedInfo = await FileSystem.getInfoAsync(result.uri);
-  const renamedSize = renamedInfo.exists ? renamedInfo.size ?? 0 : 0;
+  const renamedSize = renamedInfo.exists ? (renamedInfo.size ?? 0) : 0;
   if (!renamedInfo.exists || (file.size > 0 && renamedSize !== file.size)) {
     throw new Error("重命名结果校验失败，文件库未更新。");
   }
@@ -123,20 +183,35 @@ export async function renameLibraryFile(
     fileName: destinationName,
     baseName: getBaseName(destinationName),
     uri: result.uri,
-    sourceUri: result.sourceRenamed && result.sourceUri ? result.sourceUri : file.sourceUri,
+    sourceUri:
+      result.sourceRenamed && result.sourceUri
+        ? result.sourceUri
+        : file.sourceUri,
     renameSyncStatus: result.sourceRenamed ? "original_and_copy" : "copy_only",
   };
 
   const storedFiles = await loadLibrary();
-  const nextStoredFiles = storedFiles.some((storedFile) => storedFile.id === file.id)
-    ? storedFiles.map((storedFile) => (storedFile.id === file.id ? renamedFile : storedFile))
+  const nextStoredFiles = storedFiles.some(
+    (storedFile) => storedFile.id === file.id,
+  )
+    ? storedFiles.map((storedFile) =>
+        storedFile.id === file.id ? renamedFile : storedFile,
+      )
     : [...storedFiles, renamedFile];
   await saveLibrary(nextStoredFiles);
 
   const verifiedFiles = await loadLibrary();
-  const verifiedFile = verifiedFiles.find((storedFile) => storedFile.id === file.id);
-  if (!verifiedFile || verifiedFile.fileName !== destinationName || verifiedFile.uri !== result.uri) {
-    throw new Error("重命名已执行，但文件库记录未能保存。请重新打开应用后重试。");
+  const verifiedFile = verifiedFiles.find(
+    (storedFile) => storedFile.id === file.id,
+  );
+  if (
+    !verifiedFile ||
+    verifiedFile.fileName !== destinationName ||
+    verifiedFile.uri !== result.uri
+  ) {
+    throw new Error(
+      "重命名已执行，但文件库记录未能保存。请重新打开应用后重试。",
+    );
   }
 
   return {
@@ -146,6 +221,8 @@ export async function renameLibraryFile(
   };
 }
 
-export async function exportLibraryFile(file: LibraryFile): Promise<string | null> {
+export async function exportLibraryFile(
+  file: LibraryFile,
+): Promise<string | null> {
   return exportLibraryCopy(file.uri, file.fileName);
 }

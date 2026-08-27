@@ -30,6 +30,7 @@ import Animated, {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { ManualCropper } from "@/components/manual-cropper";
+import { PhotoFrameEditor } from "@/components/photo-frame-editor";
 import { ZoomableImage } from "@/components/zoomable-image";
 import { type CropRect } from "@/lib/crop-math";
 import {
@@ -44,6 +45,8 @@ import {
   createCroppedLibraryCopy,
   type CropAspectRatio,
 } from "@/lib/photo-crop";
+import { createFramedLibraryCopy } from "@/lib/photo-frame";
+import type { PhotoFrameRequest } from "@/lib/photo-frame-math";
 import {
   exportLibraryFile,
   loadLibrary,
@@ -92,6 +95,13 @@ export default function DetailScreen() {
   const [cropError, setCropError] = useState<string | null>(null);
   const [cropResetKey, setCropResetKey] = useState(0);
   const [isCropping, setIsCropping] = useState(false);
+  const [isFrameVisible, setIsFrameVisible] = useState(false);
+  const [isFraming, setIsFraming] = useState(false);
+  const [frameRequest, setFrameRequest] = useState<PhotoFrameRequest>({
+    style: "solid",
+    themeId: "white",
+    brandMark: "Sony",
+  });
   const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({
     status: "idle",
@@ -283,6 +293,50 @@ export default function DetailScreen() {
       setIsCropping(false);
     }
   }, [cropError, cropRatio, cropSelection, file, router]);
+
+  const openPhotoFrame = useCallback(() => {
+    if (!file) return;
+    if (file.kind !== "image") {
+      Alert.alert(
+        "暂不支持 RAW 边框",
+        "为保护原始 RAW 数据，边框导出当前仅支持 PNG、JPG 和 JPEG 图片。本文件仍可正常预览和导出。",
+      );
+      return;
+    }
+    setFrameRequest({ style: "solid", themeId: "white", brandMark: "Sony" });
+    setIsFrameVisible(true);
+    if (exifState.status !== "loading") void loadExif();
+  }, [exifState.status, file, loadExif]);
+
+  const confirmPhotoFrame = useCallback(async () => {
+    if (!file || file.kind !== "image") return;
+    setIsFraming(true);
+    try {
+      let frameExif = exifState.info;
+      if (!frameExif) {
+        frameExif = await readExifInfo(file.uri);
+        setExifState({ status: "ready", info: frameExif });
+      }
+      const framedFile = await createFramedLibraryCopy(
+        file,
+        frameExif,
+        frameRequest,
+      );
+      setIsFrameVisible(false);
+      setNotice("已创建照片边框本地副本");
+      hapticSuccess();
+      router.push({ pathname: "/detail", params: { id: framedFile.id } });
+    } catch (error) {
+      Alert.alert(
+        "边框未生成",
+        error instanceof Error
+          ? error.message
+          : "无法保存照片边框副本。请重试。",
+      );
+    } finally {
+      setIsFraming(false);
+    }
+  }, [exifState.info, file, frameRequest, router]);
 
   const confirmRename = useCallback(async () => {
     if (!file) return;
@@ -539,6 +593,20 @@ export default function DetailScreen() {
                 {isImage ? "保存新副本" : "仅图片"}
               </Text>
               <MaterialIcons name="chevron-right" size={20} color="#B7A2EA" />
+            </Pressable>
+            <Pressable
+              onPress={openPhotoFrame}
+              style={({ pressed }) => [
+                styles.frameButton,
+                pressed && styles.renameButtonPressed,
+              ]}
+            >
+              <MaterialIcons name="wallpaper" size={18} color="#F4D298" />
+              <Text style={styles.frameButtonText}>照片边框</Text>
+              <Text style={styles.frameHint}>
+                {isImage ? "保存新副本" : "仅图片"}
+              </Text>
+              <MaterialIcons name="chevron-right" size={20} color="#F4D298" />
             </Pressable>
           </View>
 
@@ -866,6 +934,16 @@ export default function DetailScreen() {
               </View>
             </View>
           </Modal>
+          <PhotoFrameEditor
+            visible={isFrameVisible}
+            file={file}
+            exif={exifState.info}
+            value={frameRequest}
+            isSaving={isFraming}
+            onChange={setFrameRequest}
+            onClose={() => !isFraming && setIsFrameVisible(false)}
+            onSave={() => void confirmPhotoFrame()}
+          />
         </ScreenContainer>
       </Animated.View>
     </GestureDetector>
@@ -1076,6 +1154,25 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   cropHint: { color: "#B7A2EA", fontSize: 10, fontWeight: "700" },
+  frameButton: {
+    minHeight: 46,
+    marginTop: 9,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#71582F",
+    backgroundColor: "#382D20",
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  frameButtonText: {
+    flex: 1,
+    color: "#F4D298",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  frameHint: { color: "#D8BA88", fontSize: 10, fontWeight: "700" },
   renameButtonPressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
   renameButtonText: { color: "#11161C", fontSize: 14, fontWeight: "800" },
   modalBackdrop: {

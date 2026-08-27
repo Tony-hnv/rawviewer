@@ -22,6 +22,7 @@ const rawDecoderModule = `package com.rawview.rawdecoder
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
@@ -43,6 +44,8 @@ import com.homesoft.photo.libraw.LibRaw
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactContextBaseJavaModule(appContext) {
@@ -271,6 +274,104 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       promise.reject("CROP_FAILED", error.message ?: "Unable to crop image into the local library.", error)
     } finally {
       croppedBitmap?.recycle()
+      uprightBitmap?.recycle()
+    }
+  }
+
+  private fun frameColor(value: String, fallback: Int): Int = try {
+    Color.parseColor(value)
+  } catch (_: IllegalArgumentException) {
+    fallback
+  }
+
+  private fun drawFrameText(
+    canvas: Canvas,
+    text: String,
+    x: Float,
+    y: Float,
+    size: Float,
+    color: Int,
+    bold: Boolean = false,
+  ) {
+    if (text.isBlank()) return
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      this.color = color
+      textSize = size
+      typeface = if (bold) android.graphics.Typeface.DEFAULT_BOLD else android.graphics.Typeface.DEFAULT
+      isSubpixelText = true
+    }
+    canvas.drawText(text, x, y, paint)
+  }
+
+  @ReactMethod
+  fun createPhotoFrame(
+    localUri: String,
+    destinationUri: String,
+    format: String,
+    style: String,
+    backgroundColor: String,
+    foregroundColor: String,
+    title: String,
+    subtitle: String,
+    details: String,
+    promise: Promise,
+  ) {
+    var uprightBitmap: Bitmap? = null
+    var framedBitmap: Bitmap? = null
+    try {
+      val sourceFile = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
+      check(sourceFile.exists()) { "FRAME_SOURCE_MISSING: Import the file again before adding a frame." }
+      val upright = decodeUprightBitmap(sourceFile)
+      uprightBitmap = upright
+      val shortSide = min(upright.width, upright.height)
+      val sideInset = max(28, (shortSide * 0.052f).roundToInt())
+      val informationStyle = style == "exif" || style == "brand"
+      val bottomInset = if (informationStyle) max(sideInset * 3, (shortSide * 0.17f).roundToInt()) else sideInset
+      val outputWidth = upright.width + sideInset * 2
+      val outputHeight = upright.height + sideInset + bottomInset
+      val output = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+      framedBitmap = output
+      val canvas = Canvas(output)
+      val background = frameColor(backgroundColor, Color.WHITE)
+      val foreground = frameColor(foregroundColor, Color.BLACK)
+      canvas.drawColor(background)
+      canvas.drawBitmap(
+        upright,
+        null,
+        Rect(sideInset, sideInset, sideInset + upright.width, sideInset + upright.height),
+        Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+      )
+
+      if (informationStyle) {
+        val textX = sideInset.toFloat()
+        val captionTop = (sideInset + upright.height).toFloat()
+        val titleSize = max(18f, min(44f, shortSide * if (style == "brand") 0.045f else 0.031f))
+        val subtitleSize = max(11f, min(25f, shortSide * 0.018f))
+        val detailSize = max(10f, min(22f, shortSide * 0.015f))
+        val titleY = captionTop + bottomInset * 0.34f
+        val subtitleY = captionTop + bottomInset * 0.56f
+        val detailY = captionTop + bottomInset * 0.78f
+        drawFrameText(canvas, title, textX, titleY, titleSize, foreground, bold = true)
+        drawFrameText(canvas, subtitle, textX, subtitleY, subtitleSize, foreground)
+        drawFrameText(canvas, details, textX, detailY, detailSize, foreground, bold = true)
+      }
+
+      val destinationFile = File(requireNotNull(Uri.parse(destinationUri).path) { "Destination path is unavailable." })
+      destinationFile.parentFile?.mkdirs()
+      val compressFormat = if (format == "png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+      destinationFile.outputStream().use { outputStream ->
+        check(output.compress(compressFormat, 100, outputStream)) { "FRAME_WRITE_FAILED: Android could not encode the bordered image." }
+      }
+      check(destinationFile.exists() && destinationFile.length() > 0L) { "FRAME_WRITE_FAILED: Framed local copy is empty." }
+      promise.resolve(Arguments.createMap().apply {
+        putString("uri", "file://" + destinationFile.absolutePath)
+        putInt("width", outputWidth)
+        putInt("height", outputHeight)
+      })
+    } catch (error: Exception) {
+      promise.reject("FRAME_FAILED", error.message ?: "Unable to create the local framed copy.", error)
+    } finally {
+      framedBitmap?.recycle()
       uprightBitmap?.recycle()
     }
   }

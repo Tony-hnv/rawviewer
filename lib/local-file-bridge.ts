@@ -34,6 +34,17 @@ interface RawDecoderNativeModule {
     destinationUri: string,
     format: "png" | "jpeg",
   ): Promise<CropImageResult>;
+  createPhotoFrame(
+    localUri: string,
+    destinationUri: string,
+    format: "png" | "jpeg",
+    style: "solid" | "exif" | "brand",
+    backgroundColor: string,
+    foregroundColor: string,
+    title: string,
+    subtitle: string,
+    details: string,
+  ): Promise<FramedImageResult>;
 }
 
 export interface CropImageInfo {
@@ -43,6 +54,12 @@ export interface CropImageInfo {
 }
 
 export interface CropImageResult {
+  uri: string;
+  width: number;
+  height: number;
+}
+
+export interface FramedImageResult {
   uri: string;
   width: number;
   height: number;
@@ -114,6 +131,34 @@ export async function cropImageIntoLibrary(
     crop.height,
     destinationUri,
     format,
+  );
+}
+
+/** 将带有边框的标准图片直接写入 Android 应用私有图库目录。 */
+export async function renderPhotoFrameIntoLibrary(
+  localUri: string,
+  destinationUri: string,
+  format: "png" | "jpeg",
+  style: "solid" | "exif" | "brand",
+  backgroundColor: string,
+  foregroundColor: string,
+  text: { title: string; subtitle: string; details: string },
+): Promise<FramedImageResult> {
+  if (Platform.OS !== "android") {
+    throw new Error(
+      "照片边框需使用最新 Android 发布构建，Expo Go 不包含本地渲染模块。",
+    );
+  }
+  return nativeModule().createPhotoFrame(
+    localUri,
+    destinationUri,
+    format,
+    style,
+    backgroundColor,
+    foregroundColor,
+    text.title,
+    text.subtitle,
+    text.details,
   );
 }
 

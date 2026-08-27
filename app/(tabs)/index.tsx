@@ -28,6 +28,7 @@ import Animated, {
 import { ScreenContainer } from "@/components/screen-container";
 import { pickWritableDocuments } from "@/lib/local-file-bridge";
 import {
+  clearImportedLibrary,
   importAssets,
   loadLibrary,
   renameLibraryFile,
@@ -108,6 +109,7 @@ export default function LibraryScreen() {
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isImporting, setIsImporting] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedFile, setSelectedFile] = useState<LibraryFile | null>(null);
   const [isSupportVisible, setIsSupportVisible] = useState(false);
@@ -186,6 +188,54 @@ export default function LibraryScreen() {
       setIsImporting(false);
     }
   }, [files]);
+
+  const clearImportedPhotos = useCallback(async () => {
+    if (files.length === 0) return;
+    setIsClearing(true);
+    try {
+      const result = await clearImportedLibrary();
+      setFiles([]);
+      rawPreviewCache.current = {};
+      feedback("success");
+      if (result.remaining > 0) {
+        Alert.alert(
+          "部分本地副本未清除",
+          `已清除 ${result.cleared} 个应用本地副本，仍有 ${result.remaining} 个副本保留。原始文件从未被删除，可稍后重试。`,
+        );
+      } else {
+        Alert.alert(
+          "已清除本地图库",
+          `已移除 ${result.cleared} 个应用本地副本。设备原始文件未被修改或删除。`,
+        );
+      }
+    } catch (error) {
+      Alert.alert(
+        "清除未完成",
+        error instanceof Error
+          ? error.message
+          : "本地图库记录未能更新。原始文件未被修改。",
+      );
+      await refreshLibrary();
+    } finally {
+      setIsClearing(false);
+    }
+  }, [files.length, refreshLibrary]);
+
+  const requestClearImportedPhotos = useCallback(() => {
+    if (files.length === 0 || isClearing) return;
+    Alert.alert(
+      "清除已导入图片？",
+      `将移除 RAW View 中的 ${files.length} 个应用本地副本及其图库记录。设备原始文件不会被删除。`,
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "清除本地副本",
+          style: "destructive",
+          onPress: () => void clearImportedPhotos(),
+        },
+      ],
+    );
+  }, [clearImportedPhotos, files.length, isClearing]);
 
   const openFile = useCallback(
     (file: LibraryFile) => {
@@ -521,16 +571,39 @@ export default function LibraryScreen() {
             </Text>
           </View>
         </View>
-        <Pressable
-          onPress={() => setIsSupportVisible(true)}
-          style={({ pressed }) => [
-            styles.iconButton,
-            pressed && styles.pressed,
-          ]}
-          accessibilityLabel="查看支持格式"
-        >
-          <MaterialIcons name="info-outline" size={24} color="#AAB4BE" />
-        </Pressable>
+        <View style={styles.headerActions}>
+          {files.length > 0 && (
+            <Pressable
+              onPress={requestClearImportedPhotos}
+              disabled={isClearing}
+              style={({ pressed }) => [
+                styles.clearLibraryButton,
+                (pressed || isClearing) && styles.pressed,
+              ]}
+              accessibilityLabel="清除已导入图片"
+            >
+              {isClearing ? (
+                <ActivityIndicator size="small" color="#F6AAA1" />
+              ) : (
+                <MaterialIcons
+                  name="delete-outline"
+                  size={22}
+                  color="#F6AAA1"
+                />
+              )}
+            </Pressable>
+          )}
+          <Pressable
+            onPress={() => setIsSupportVisible(true)}
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && styles.pressed,
+            ]}
+            accessibilityLabel="查看支持格式"
+          >
+            <MaterialIcons name="info-outline" size={24} color="#AAB4BE" />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.filterRow}>
@@ -872,6 +945,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 22,
     backgroundColor: "#1B242D",
+  },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  clearLibraryButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#382225",
+    borderWidth: 1,
+    borderColor: "#6D3B40",
   },
   pressed: { opacity: 0.68 },
   filterRow: {
