@@ -95,3 +95,7 @@
 - [x] 在品牌选择器和导出边框中渲染同一套品牌 Logo 资源
 - [x] 验证品牌 Logo 的资源解析、等比绘制和 Android 本地副本输出
 - [ ] 在真实 Android 发布构建中验收品牌 Logo 选择与照片边框效果
+
+- [ ] 将 RAW View 1.1.7 官方品牌 Logo 改动提交并同步至 GitHub main
+- [ ] 触发并监控 RAW View 1.1.7 Android 签名 Release CI
+- [ ] 核验新的签名 APK、SHA-256 与 GitHub Actions 产物
