@@ -63,7 +63,8 @@ export async function createCroppedLibraryCopy(
   await FileSystem.makeDirectoryAsync(LIBRARY_DIRECTORY, {
     intermediates: true,
   });
-  const requestedName = `${file.baseName}-裁切-${ratio.replace(":", "x")}.${outputExtension}`;
+  const ratioName = ratio === "free" ? "自由" : ratio.replace(":", "x");
+  const requestedName = `${file.baseName}-裁切-${ratioName}.${outputExtension}`;
   const fileName = await getAvailableCropName(requestedName);
   const destinationUri = `${LIBRARY_DIRECTORY}${fileName}`;
   const croppedResult =

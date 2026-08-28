@@ -32,10 +32,33 @@ export type PhotoFrameTheme = {
   foregroundColor: string;
 };
 
+export const LOGO_SCALE_MIN = 0.6;
+export const LOGO_SCALE_MAX = 1.6;
+export const LOGO_OFFSET_MIN = -1;
+export const LOGO_OFFSET_MAX = 1;
+
+export function clampLogoScale(value: number): number {
+  return Math.min(
+    LOGO_SCALE_MAX,
+    Math.max(LOGO_SCALE_MIN, Number(value.toFixed(1))),
+  );
+}
+
+export function clampLogoOffset(value: number): number {
+  return Math.min(
+    LOGO_OFFSET_MAX,
+    Math.max(LOGO_OFFSET_MIN, Number(value.toFixed(1))),
+  );
+}
+
 export type PhotoFrameRequest = {
   style: PhotoFrameStyle;
   themeId: PhotoFrameThemeId;
   brandMark: BrandMarkId;
+  logoVisible?: boolean;
+  logoScale?: number;
+  logoOffsetX?: number;
+  logoOffsetY?: number;
 };
 
 export type FrameText = {
@@ -54,7 +77,7 @@ export const PHOTO_FRAME_STYLES: {
   { id: "film", label: "胶片日期", description: "齿孔与日期戳风格" },
   { id: "polaroid", label: "拍立得", description: "宽底部留白与标题" },
   { id: "exif", label: "EXIF 参数", description: "显示相机与曝光信息" },
-  { id: "brand", label: "品牌标识", description: "显示相机或手机品牌字样" },
+  { id: "brand", label: "品牌标识", description: "显示相机或手机品牌 Logo" },
 ];
 
 export const PHOTO_FRAME_THEMES: PhotoFrameTheme[] = [

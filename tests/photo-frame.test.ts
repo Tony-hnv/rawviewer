@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   BRAND_MARKS,
   buildFrameText,
+  clampLogoOffset,
+  clampLogoScale,
   getContainedFrameImageRect,
   getPhotoFrameLayout,
   hasFrameInformation,
@@ -130,5 +132,19 @@ describe("photo frame metadata", () => {
     expect(new Set(Object.values(BRAND_LOGO_RESOURCE_NAMES)).size).toBe(
       BRAND_MARKS.length,
     );
+  });
+});
+
+describe("brand logo controls", () => {
+  it("clamps Logo scale to the supported 60%–160% range", () => {
+    expect(clampLogoScale(0.1)).toBe(0.6);
+    expect(clampLogoScale(1.24)).toBe(1.2);
+    expect(clampLogoScale(2)).toBe(1.6);
+  });
+
+  it("clamps Logo position offsets to the information panel", () => {
+    expect(clampLogoOffset(-2)).toBe(-1);
+    expect(clampLogoOffset(0.34)).toBe(0.3);
+    expect(clampLogoOffset(2)).toBe(1);
   });
 });

@@ -96,3 +96,34 @@ describe("manual crop geometry", () => {
     ).toEqual({ originX: 600, originY: 2800, width: 1800, height: 3200 });
   });
 });
+
+describe("freeform crop geometry", () => {
+  it("starts with a centered freeform selection that can use different width and height", () => {
+    expect(
+      getInitialCropBox({ x: 0, y: 0, width: 400, height: 300 }, "free"),
+    ).toEqual({ x: 28, y: 21, width: 344, height: 258 });
+  });
+
+  it("resizes freeform width and height independently from the bottom-right handle", () => {
+    expect(
+      resizeCropBoxFromBottomRight(
+        { x: 20, y: 30, width: 160, height: 120 },
+        { x: 0, y: 0, width: 300, height: 220 },
+        "free",
+        80,
+        -20,
+      ),
+    ).toEqual({ x: 20, y: 30, width: 240, height: 100 });
+  });
+
+  it("keeps an explicit freeform source selection instead of replacing it with the centered default", () => {
+    expect(
+      getSelectedOrCenteredCrop(
+        { originX: 240, originY: 120, width: 960, height: 540 },
+        4000,
+        3000,
+        "free",
+      ),
+    ).toEqual({ originX: 240, originY: 120, width: 960, height: 540 });
+  });
+});

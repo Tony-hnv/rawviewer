@@ -392,6 +392,10 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
     subtitle: String,
     details: String,
     brandMark: String,
+    logoVisible: Boolean,
+    logoScale: Double,
+    logoOffsetX: Double,
+    logoOffsetY: Double,
     promise: Promise,
   ) {
     var uprightBitmap: Bitmap? = null
@@ -479,14 +483,21 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
         drawFrameText(canvas, title, textX, titleY, titleSize, foreground, bold = true)
         drawFrameText(canvas, subtitle, textX, subtitleY, subtitleSize, foreground)
         drawFrameText(canvas, details, textX, detailY, detailSize, foreground, bold = true)
-        if (style == "brand") {
-          val logoWidth = min(bottomInset * 0.92f, 180f)
-          val logoHeight = min(bottomInset * 0.42f, 58f)
+        if (style == "brand" && logoVisible) {
+          val safeLogoScale = logoScale.toFloat().coerceIn(0.6f, 1.6f)
+          val logoWidth = min(bottomInset * 0.92f, 180f) * safeLogoScale
+          val logoHeight = min(bottomInset * 0.42f, 58f) * safeLogoScale
+          val horizontalTravel = sideInset * 2f
+          val verticalTravel = bottomInset * 0.28f
+          val requestedLeft = outputWidth - sideInset - logoWidth + logoOffsetX.toFloat() * horizontalTravel
+          val requestedTop = captionTop + (bottomInset - logoHeight) / 2f + logoOffsetY.toFloat() * verticalTravel
+          val logoLeft = requestedLeft.coerceIn(sideInset.toFloat(), (outputWidth - sideInset - logoWidth).coerceAtLeast(sideInset.toFloat()))
+          val logoTop = requestedTop.coerceIn(captionTop, (captionTop + bottomInset - logoHeight).coerceAtLeast(captionTop))
           drawBrandLogo(
             canvas,
             brandMark,
-            outputWidth - sideInset - logoWidth,
-            captionTop + (bottomInset - logoHeight) / 2f,
+            logoLeft,
+            logoTop,
             logoWidth,
             logoHeight,
             foreground,

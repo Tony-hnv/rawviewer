@@ -1,4 +1,4 @@
-export type CropAspectRatio = "1:1" | "4:3" | "3:4" | "16:9" | "9:16";
+export type CropAspectRatio = "1:1" | "4:3" | "3:4" | "16:9" | "9:16" | "free";
 
 export const CROP_ASPECT_RATIOS: ReadonlyArray<{
   id: CropAspectRatio;
@@ -10,6 +10,7 @@ export const CROP_ASPECT_RATIOS: ReadonlyArray<{
   { id: "3:4", width: 3, height: 4 },
   { id: "16:9", width: 16, height: 9 },
   { id: "9:16", width: 9, height: 16 },
+  { id: "free", width: 0, height: 0 },
 ];
 
 export type CropRect = {
@@ -37,6 +38,9 @@ function requirePositiveSize(width: number, height: number, message: string) {
 }
 
 export function getCropAspectValue(ratio: CropAspectRatio): number {
+  if (ratio === "free") {
+    throw new Error("自由比例不使用固定比例值。");
+  }
   const target = CROP_ASPECT_RATIOS.find((option) => option.id === ratio);
   if (!target) {
     throw new Error("无法识别裁切比例。请重新选择后重试。");
@@ -115,6 +119,16 @@ export function getInitialCropBox(
   coverage = 0.86,
 ): CropBox {
   requirePositiveSize(bounds.width, bounds.height, "裁切画布尺寸无效。");
+  if (ratio === "free") {
+    const width = bounds.width * clamp(coverage, 0.1, 1);
+    const height = bounds.height * clamp(coverage, 0.1, 1);
+    return {
+      x: bounds.x + (bounds.width - width) / 2,
+      y: bounds.y + (bounds.height - height) / 2,
+      width,
+      height,
+    };
+  }
   const aspect = getCropAspectValue(ratio);
   const width = getMaximumCropWidth(bounds, aspect) * clamp(coverage, 0.1, 1);
   const height = width / aspect;
@@ -156,6 +170,15 @@ export function resizeCropBoxFromBottomRight(
   translationY: number,
   minimumEdge = 48,
 ): CropBox {
+  if (ratio === "free") {
+    return resizeCropBoxFromBottomRightFree(
+      crop,
+      bounds,
+      translationX,
+      translationY,
+      minimumEdge,
+    );
+  }
   const aspect = getCropAspectValue(ratio);
   const maximumWidth = Math.min(
     Math.max(1, bounds.x + bounds.width - crop.x),
@@ -182,6 +205,9 @@ export function resizeCropBoxFromCenter(
   scale: number,
   minimumEdge = 48,
 ): CropBox {
+  if (ratio === "free") {
+    return resizeCropBoxFromCenterFree(crop, bounds, scale, minimumEdge);
+  }
   const aspect = getCropAspectValue(ratio);
   const maximumWidth = getMaximumCropWidth(bounds, aspect);
   const minimumWidth = getMinimumCropWidth(maximumWidth, aspect, minimumEdge);
@@ -192,6 +218,73 @@ export function resizeCropBoxFromCenter(
   return {
     x: clamp(centerX - width / 2, bounds.x, bounds.x + bounds.width - width),
     y: clamp(centerY - height / 2, bounds.y, bounds.y + bounds.height - height),
+    width,
+    height,
+  };
+}
+
+/** 自由比例模式下，右下角独立改变宽高，左上角保持不动。 */
+export function resizeCropBoxFromBottomRightFree(
+  crop: CropBox,
+  bounds: CropBox,
+  translationX: number,
+  translationY: number,
+  minimumEdge = 48,
+): CropBox {
+  const maxWidth = Math.max(1, bounds.x + bounds.width - crop.x);
+  const maxHeight = Math.max(1, bounds.y + bounds.height - crop.y);
+  return {
+    x: crop.x,
+    y: crop.y,
+    width: clamp(
+      crop.width + translationX,
+      Math.min(minimumEdge, maxWidth),
+      maxWidth,
+    ),
+    height: clamp(
+      crop.height + translationY,
+      Math.min(minimumEdge, maxHeight),
+      maxHeight,
+    ),
+  };
+}
+
+/** 自由比例模式下，以中心为锚点等比缩放选区，仍允许宽高独立变化。 */
+export function resizeCropBoxFromCenterFree(
+  crop: CropBox,
+  bounds: CropBox,
+  scale: number,
+  minimumEdge = 48,
+): CropBox {
+  const width = clamp(crop.width * scale, minimumEdge, bounds.width);
+  const height = clamp(crop.height * scale, minimumEdge, bounds.height);
+  const centerX = crop.x + crop.width / 2;
+  const centerY = crop.y + crop.height / 2;
+  return {
+    x: clamp(centerX - width / 2, bounds.x, bounds.x + bounds.width - width),
+    y: clamp(centerY - height / 2, bounds.y, bounds.y + bounds.height - height),
+    width,
+    height,
+  };
+}
+
+/** 返回自由比例模式的居中默认像素区域。 */
+export function getCenteredFreeCrop(
+  sourceWidth: number,
+  sourceHeight: number,
+  coverage = 0.86,
+): CropRect {
+  requirePositiveSize(
+    sourceWidth,
+    sourceHeight,
+    "无法计算裁切区域。请重新打开图片后重试。",
+  );
+  const factor = clamp(coverage, 0.1, 1);
+  const width = Math.max(1, Math.round(sourceWidth * factor));
+  const height = Math.max(1, Math.round(sourceHeight * factor));
+  return {
+    originX: Math.floor((sourceWidth - width) / 2),
+    originY: Math.floor((sourceHeight - height) / 2),
     width,
     height,
   };
@@ -261,7 +354,10 @@ export function getSelectedOrCenteredCrop(
   ratio: CropAspectRatio,
 ): CropRect {
   return clampSourceCrop(
-    selectedCrop ?? getCenteredCrop(sourceWidth, sourceHeight, ratio),
+    selectedCrop ??
+      (ratio === "free"
+        ? getCenteredFreeCrop(sourceWidth, sourceHeight)
+        : getCenteredCrop(sourceWidth, sourceHeight, ratio)),
     sourceWidth,
     sourceHeight,
   );

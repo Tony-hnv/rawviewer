@@ -340,7 +340,7 @@ export function ManualCropper({
           </Text>
           <Text style={styles.captionDetail}>
             {pixelCrop
-              ? `当前输出约 ${pixelCrop.width} × ${pixelCrop.height} 像素 · 双指也可缩放裁切框`
+              ? `当前输出约 ${pixelCrop.width} × ${pixelCrop.height} 像素 · ${ratio === "free" ? "宽高可独立调整" : "保持选定比例"}`
               : "正在读取可裁切区域"}
           </Text>
         </View>

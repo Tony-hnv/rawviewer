@@ -5,6 +5,7 @@ import {
   Modal,
   Pressable,
   ScrollView,
+  Switch,
   StyleSheet,
   Text,
   View,
@@ -17,6 +18,8 @@ import {
   PHOTO_FRAME_STYLES,
   PHOTO_FRAME_THEMES,
   buildFrameText,
+  clampLogoOffset,
+  clampLogoScale,
   getPhotoFrameLayout,
   hasFrameInformation,
   isFilmFrame,
@@ -115,6 +118,21 @@ export function PhotoFrameEditor({
     onChange({ ...value, themeId });
   const setBrand = (brandMark: BrandMarkId) =>
     onChange({ ...value, brandMark });
+  const logoVisible = value.logoVisible !== false;
+  const logoScale = value.logoScale ?? 1;
+  const logoOffsetX = value.logoOffsetX ?? 0;
+  const logoOffsetY = value.logoOffsetY ?? 0;
+  const adjustLogoScale = (delta: number) =>
+    onChange({
+      ...value,
+      logoScale: clampLogoScale(logoScale + delta),
+    });
+  const adjustLogoPosition = (x: number, y: number) =>
+    onChange({
+      ...value,
+      logoOffsetX: clampLogoOffset(logoOffsetX + x),
+      logoOffsetY: clampLogoOffset(logoOffsetY + y),
+    });
 
   return (
     <Modal
@@ -126,336 +144,463 @@ export function PhotoFrameEditor({
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
           <View style={styles.handle} />
-          <View style={styles.heading}>
-            <View style={styles.headingText}>
-              <Text style={styles.title}>照片边框</Text>
-              <Text style={styles.description}>
-                参考摄影参数边框排版，导出新的应用本地副本，原图不会修改。
-              </Text>
-            </View>
-            <View style={styles.headingIcon}>
-              <MaterialIcons name="wallpaper" size={20} color="#F4D298" />
-            </View>
-          </View>
-
-          <View
-            style={styles.preview}
-            onLayout={(event) =>
-              setPreviewWidth(event.nativeEvent.layout.width)
-            }
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetContent}
+            showsVerticalScrollIndicator={false}
           >
+            <View style={styles.heading}>
+              <View style={styles.headingText}>
+                <Text style={styles.title}>照片边框</Text>
+                <Text style={styles.description}>
+                  参考摄影参数边框排版，导出新的应用本地副本，原图不会修改。
+                </Text>
+              </View>
+              <View style={styles.headingIcon}>
+                <MaterialIcons name="wallpaper" size={20} color="#F4D298" />
+              </View>
+            </View>
+
             <View
-              style={[
-                styles.previewFrame,
-                {
-                  width: previewFrame.width,
-                  height: previewFrame.height,
-                  backgroundColor: theme.backgroundColor,
-                },
-              ]}
+              style={styles.preview}
+              onLayout={(event) =>
+                setPreviewWidth(event.nativeEvent.layout.width)
+              }
             >
-              <Image
-                source={{ uri: file.uri }}
-                style={{
-                  position: "absolute",
-                  left: frameLayout.imageLeft * previewFrame.scale,
-                  top: frameLayout.imageTop * previewFrame.scale,
-                  width: frameLayout.imageWidth * previewFrame.scale,
-                  height: frameLayout.imageHeight * previewFrame.scale,
-                  borderRadius: isRoundedStyle
-                    ? Math.max(5, Math.min(14, 12 * previewFrame.scale))
-                    : 0,
-                }}
-                contentFit="contain"
-              />
-              {isFilmStyle && (
-                <>
-                  <View
-                    style={[
-                      styles.previewFilmStrip,
-                      {
-                        left: frameLayout.sideInset * previewFrame.scale,
-                        top: frameLayout.sideInset * previewFrame.scale * 0.24,
-                        width: frameLayout.imageWidth * previewFrame.scale,
-                      },
-                    ]}
-                  >
-                    {Array.from({ length: 9 }, (_, index) => (
-                      <View
-                        key={`top-${index}`}
-                        style={styles.previewFilmHole}
-                      />
-                    ))}
-                  </View>
-                  <View
-                    style={[
-                      styles.previewFilmStrip,
-                      {
-                        left: frameLayout.sideInset * previewFrame.scale,
-                        bottom:
-                          frameLayout.sideInset * previewFrame.scale * 0.24,
-                        width: frameLayout.imageWidth * previewFrame.scale,
-                      },
-                    ]}
-                  >
-                    {Array.from({ length: 9 }, (_, index) => (
-                      <View
-                        key={`bottom-${index}`}
-                        style={styles.previewFilmHole}
-                      />
-                    ))}
-                  </View>
-                  <Text
-                    style={[
-                      styles.previewFilmStamp,
-                      {
-                        color: theme.foregroundColor,
-                        left: frameLayout.sideInset * previewFrame.scale,
-                      },
-                    ]}
-                  >
-                    {text.details || "RAW VIEW"}
-                  </Text>
-                </>
-              )}
-              {isInfoStyle && (
-                <View
-                  style={[
-                    styles.previewInfo,
-                    {
-                      left: frameLayout.sideInset * previewFrame.scale,
-                      top: frameLayout.informationTop * previewFrame.scale,
-                      width: frameLayout.imageWidth * previewFrame.scale,
-                      height:
-                        frameLayout.informationHeight * previewFrame.scale,
-                      paddingTop:
-                        frameLayout.informationHeight *
-                        previewFrame.scale *
-                        0.17,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.previewTitle,
-                      {
-                        color: theme.foregroundColor,
-                        fontSize: Math.max(9, 12 * previewFrame.scale),
-                        lineHeight: Math.max(11, 16 * previewFrame.scale),
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {text.title}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.previewSubtitle,
-                      {
-                        color: theme.foregroundColor,
-                        fontSize: Math.max(7, 9 * previewFrame.scale),
-                        lineHeight: Math.max(9, 13 * previewFrame.scale),
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {text.subtitle}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.previewDetail,
-                      {
-                        color: theme.foregroundColor,
-                        fontSize: Math.max(7, 9 * previewFrame.scale),
-                        lineHeight: Math.max(9, 13 * previewFrame.scale),
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {text.details || "本地图片副本"}
-                  </Text>
-                </View>
-              )}
-              {value.style === "brand" && (
-                <View
-                  style={[
-                    styles.previewBrandBadge,
-                    {
-                      right: frameLayout.sideInset * previewFrame.scale,
-                      top:
-                        frameLayout.informationTop * previewFrame.scale +
-                        frameLayout.informationHeight *
-                          previewFrame.scale *
-                          0.2,
-                    },
-                  ]}
-                >
-                  <Image
-                    source={BRAND_LOGO_SOURCES[value.brandMark]}
-                    contentFit="contain"
-                    tintColor={theme.foregroundColor}
-                    accessibilityLabel={`${value.brandMark} Logo`}
-                    style={[
-                      styles.previewBrandLogo,
-                      {
-                        width: Math.max(36, 68 * previewFrame.scale),
-                        height: Math.max(15, 25 * previewFrame.scale),
-                      },
-                    ]}
-                  />
-                </View>
-              )}
-            </View>
-          </View>
-
-          <Text style={styles.sectionLabel}>边框样式</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.optionRow}
-          >
-            {PHOTO_FRAME_STYLES.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => setStyle(item.id)}
-                disabled={isSaving}
-                style={({ pressed }) => [
-                  styles.styleChip,
-                  value.style === item.id && styles.styleChipActive,
-                  (pressed || isSaving) && styles.pressed,
+              <View
+                style={[
+                  styles.previewFrame,
+                  {
+                    width: previewFrame.width,
+                    height: previewFrame.height,
+                    backgroundColor: theme.backgroundColor,
+                  },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.styleLabel,
-                    value.style === item.id && styles.styleLabelActive,
-                  ]}
-                >
-                  {item.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.styleDescription,
-                    value.style === item.id && styles.styleDescriptionActive,
-                  ]}
-                >
-                  {item.description}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          <Text style={styles.sectionLabel}>边框颜色</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.colorRow}
-          >
-            {PHOTO_FRAME_THEMES.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => setTheme(item.id)}
-                disabled={isSaving}
-                style={({ pressed }) => [
-                  styles.colorChip,
-                  value.themeId === item.id && styles.colorChipActive,
-                  (pressed || isSaving) && styles.pressed,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.colorDot,
-                    { backgroundColor: item.backgroundColor },
-                  ]}
+                <Image
+                  source={{ uri: file.uri }}
+                  style={{
+                    position: "absolute",
+                    left: frameLayout.imageLeft * previewFrame.scale,
+                    top: frameLayout.imageTop * previewFrame.scale,
+                    width: frameLayout.imageWidth * previewFrame.scale,
+                    height: frameLayout.imageHeight * previewFrame.scale,
+                    borderRadius: isRoundedStyle
+                      ? Math.max(5, Math.min(14, 12 * previewFrame.scale))
+                      : 0,
+                  }}
+                  contentFit="contain"
                 />
-                <Text style={styles.colorText}>{item.label}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          {value.style === "brand" && (
-            <>
-              <Text style={styles.sectionLabel}>品牌标识</Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.brandRow}
-              >
-                {BRAND_MARKS.map((brand) => (
-                  <Pressable
-                    key={brand}
-                    onPress={() => setBrand(brand)}
-                    disabled={isSaving}
-                    style={({ pressed }) => [
-                      styles.brandChip,
-                      value.brandMark === brand && styles.brandChipActive,
-                      (pressed || isSaving) && styles.pressed,
-                    ]}
-                  >
+                {isFilmStyle && (
+                  <>
                     <View
                       style={[
-                        styles.brandIcon,
-                        value.brandMark === brand && styles.brandIconActive,
+                        styles.previewFilmStrip,
+                        {
+                          left: frameLayout.sideInset * previewFrame.scale,
+                          top:
+                            frameLayout.sideInset * previewFrame.scale * 0.24,
+                          width: frameLayout.imageWidth * previewFrame.scale,
+                        },
                       ]}
                     >
-                      <Image
-                        source={BRAND_LOGO_SOURCES[brand]}
-                        contentFit="contain"
-                        tintColor={
-                          value.brandMark === brand ? "#1A1610" : "#D5DCE3"
-                        }
-                        accessibilityLabel={`${brand} Logo`}
-                        style={styles.brandLogo}
-                      />
+                      {Array.from({ length: 9 }, (_, index) => (
+                        <View
+                          key={`top-${index}`}
+                          style={styles.previewFilmHole}
+                        />
+                      ))}
+                    </View>
+                    <View
+                      style={[
+                        styles.previewFilmStrip,
+                        {
+                          left: frameLayout.sideInset * previewFrame.scale,
+                          bottom:
+                            frameLayout.sideInset * previewFrame.scale * 0.24,
+                          width: frameLayout.imageWidth * previewFrame.scale,
+                        },
+                      ]}
+                    >
+                      {Array.from({ length: 9 }, (_, index) => (
+                        <View
+                          key={`bottom-${index}`}
+                          style={styles.previewFilmHole}
+                        />
+                      ))}
                     </View>
                     <Text
                       style={[
-                        styles.brandText,
-                        value.brandMark === brand && styles.brandTextActive,
+                        styles.previewFilmStamp,
+                        {
+                          color: theme.foregroundColor,
+                          left: frameLayout.sideInset * previewFrame.scale,
+                        },
                       ]}
                     >
-                      {brand}
+                      {text.details || "RAW VIEW"}
                     </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </>
-          )}
-
-          {value.style === "exif" && !exif && (
-            <View style={styles.infoNotice}>
-              <MaterialIcons name="info-outline" size={16} color="#F4D298" />
-              <Text style={styles.infoNoticeText}>
-                未读取到 EXIF 时会显示文件名与本地副本标识。
-              </Text>
+                  </>
+                )}
+                {isInfoStyle && (
+                  <View
+                    style={[
+                      styles.previewInfo,
+                      {
+                        left: frameLayout.sideInset * previewFrame.scale,
+                        top: frameLayout.informationTop * previewFrame.scale,
+                        width: frameLayout.imageWidth * previewFrame.scale,
+                        height:
+                          frameLayout.informationHeight * previewFrame.scale,
+                        paddingTop:
+                          frameLayout.informationHeight *
+                          previewFrame.scale *
+                          0.17,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.previewTitle,
+                        {
+                          color: theme.foregroundColor,
+                          fontSize: Math.max(9, 12 * previewFrame.scale),
+                          lineHeight: Math.max(11, 16 * previewFrame.scale),
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {text.title}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.previewSubtitle,
+                        {
+                          color: theme.foregroundColor,
+                          fontSize: Math.max(7, 9 * previewFrame.scale),
+                          lineHeight: Math.max(9, 13 * previewFrame.scale),
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {text.subtitle}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.previewDetail,
+                        {
+                          color: theme.foregroundColor,
+                          fontSize: Math.max(7, 9 * previewFrame.scale),
+                          lineHeight: Math.max(9, 13 * previewFrame.scale),
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {text.details || "本地图片副本"}
+                    </Text>
+                  </View>
+                )}
+                {value.style === "brand" && logoVisible && (
+                  <View
+                    style={[
+                      styles.previewBrandBadge,
+                      {
+                        right: frameLayout.sideInset * previewFrame.scale,
+                        top:
+                          frameLayout.informationTop * previewFrame.scale +
+                          frameLayout.informationHeight *
+                            previewFrame.scale *
+                            0.2,
+                        transform: [
+                          { translateX: logoOffsetX * 18 * previewFrame.scale },
+                          { translateY: logoOffsetY * 10 * previewFrame.scale },
+                          { scale: logoScale },
+                        ],
+                      },
+                    ]}
+                  >
+                    <Image
+                      source={BRAND_LOGO_SOURCES[value.brandMark]}
+                      contentFit="contain"
+                      tintColor={theme.foregroundColor}
+                      accessibilityLabel={`${value.brandMark} Logo`}
+                      style={[
+                        styles.previewBrandLogo,
+                        {
+                          width: Math.max(36, 68 * previewFrame.scale),
+                          height: Math.max(15, 25 * previewFrame.scale),
+                        },
+                      ]}
+                    />
+                  </View>
+                )}
+              </View>
             </View>
-          )}
 
-          <View style={styles.actions}>
-            <Pressable
-              onPress={onClose}
-              disabled={isSaving}
-              style={({ pressed }) => [
-                styles.cancelButton,
-                (pressed || isSaving) && styles.pressed,
-              ]}
+            <Text style={styles.sectionLabel}>边框样式</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.optionRow}
             >
-              <Text style={styles.cancelText}>取消</Text>
-            </Pressable>
-            <Pressable
-              onPress={onSave}
-              disabled={isSaving}
-              style={({ pressed }) => [
-                styles.saveButton,
-                (pressed || isSaving) && styles.pressed,
-              ]}
+              {PHOTO_FRAME_STYLES.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => setStyle(item.id)}
+                  disabled={isSaving}
+                  style={({ pressed }) => [
+                    styles.styleChip,
+                    value.style === item.id && styles.styleChipActive,
+                    (pressed || isSaving) && styles.pressed,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.styleLabel,
+                      value.style === item.id && styles.styleLabelActive,
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.styleDescription,
+                      value.style === item.id && styles.styleDescriptionActive,
+                    ]}
+                  >
+                    {item.description}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <Text style={styles.sectionLabel}>边框颜色</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.colorRow}
             >
-              <MaterialIcons name="save-alt" size={18} color="#11161C" />
-              <Text style={styles.saveText}>
-                {isSaving ? "正在生成" : "生成边框副本"}
-              </Text>
-            </Pressable>
-          </View>
+              {PHOTO_FRAME_THEMES.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() => setTheme(item.id)}
+                  disabled={isSaving}
+                  style={({ pressed }) => [
+                    styles.colorChip,
+                    value.themeId === item.id && styles.colorChipActive,
+                    (pressed || isSaving) && styles.pressed,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.colorDot,
+                      { backgroundColor: item.backgroundColor },
+                    ]}
+                  />
+                  <Text style={styles.colorText}>{item.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {value.style === "brand" && (
+              <>
+                <Text style={styles.sectionLabel}>品牌标识</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.brandRow}
+                >
+                  {BRAND_MARKS.map((brand) => (
+                    <Pressable
+                      key={brand}
+                      onPress={() => setBrand(brand)}
+                      disabled={isSaving}
+                      style={({ pressed }) => [
+                        styles.brandChip,
+                        value.brandMark === brand && styles.brandChipActive,
+                        (pressed || isSaving) && styles.pressed,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.brandIcon,
+                          value.brandMark === brand && styles.brandIconActive,
+                        ]}
+                      >
+                        <Image
+                          source={BRAND_LOGO_SOURCES[brand]}
+                          contentFit="contain"
+                          tintColor={
+                            value.brandMark === brand ? "#1A1610" : "#D5DCE3"
+                          }
+                          accessibilityLabel={`${brand} Logo`}
+                          style={styles.brandLogo}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.brandText,
+                          value.brandMark === brand && styles.brandTextActive,
+                        ]}
+                      >
+                        {brand}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <View style={styles.logoControlsCard}>
+                  <View style={styles.logoToggleRow}>
+                    <View style={styles.logoToggleText}>
+                      <Text style={styles.logoControlTitle}>显示品牌 Logo</Text>
+                      <Text style={styles.logoControlHint}>
+                        关闭后仍保留品牌名称和拍摄信息
+                      </Text>
+                    </View>
+                    <Switch
+                      value={logoVisible}
+                      onValueChange={(nextValue) =>
+                        onChange({ ...value, logoVisible: nextValue })
+                      }
+                      disabled={isSaving}
+                      trackColor={{ false: "#3B4A55", true: "#B9792C" }}
+                      thumbColor={logoVisible ? "#F4D298" : "#AAB4BE"}
+                    />
+                  </View>
+                  <View style={styles.logoControlRow}>
+                    <Text style={styles.logoControlLabel}>Logo 大小</Text>
+                    <View style={styles.stepper}>
+                      <Pressable
+                        onPress={() => adjustLogoScale(-0.1)}
+                        disabled={isSaving || !logoVisible}
+                        style={({ pressed }) => [
+                          styles.stepperButton,
+                          (pressed || isSaving || !logoVisible) &&
+                            styles.pressed,
+                        ]}
+                      >
+                        <MaterialIcons
+                          name="remove"
+                          size={17}
+                          color="#F4D298"
+                        />
+                      </Pressable>
+                      <Text style={styles.stepperValue}>
+                        {Math.round(logoScale * 100)}%
+                      </Text>
+                      <Pressable
+                        onPress={() => adjustLogoScale(0.1)}
+                        disabled={isSaving || !logoVisible}
+                        style={({ pressed }) => [
+                          styles.stepperButton,
+                          (pressed || isSaving || !logoVisible) &&
+                            styles.pressed,
+                        ]}
+                      >
+                        <MaterialIcons name="add" size={17} color="#F4D298" />
+                      </Pressable>
+                    </View>
+                  </View>
+                  <View style={styles.logoControlRow}>
+                    <Text style={styles.logoControlLabel}>Logo 位置</Text>
+                    <View style={styles.positionPad}>
+                      <Pressable
+                        onPress={() => adjustLogoPosition(0, -0.1)}
+                        disabled={isSaving || !logoVisible}
+                        style={styles.positionButton}
+                      >
+                        <MaterialIcons
+                          name="keyboard-arrow-up"
+                          size={18}
+                          color="#D5DCE3"
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => adjustLogoPosition(-0.1, 0)}
+                        disabled={isSaving || !logoVisible}
+                        style={styles.positionButton}
+                      >
+                        <MaterialIcons
+                          name="keyboard-arrow-left"
+                          size={18}
+                          color="#D5DCE3"
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() =>
+                          onChange({ ...value, logoOffsetX: 0, logoOffsetY: 0 })
+                        }
+                        disabled={isSaving || !logoVisible}
+                        style={styles.positionCenterButton}
+                      >
+                        <MaterialIcons
+                          name="center-focus-strong"
+                          size={16}
+                          color="#F4D298"
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => adjustLogoPosition(0.1, 0)}
+                        disabled={isSaving || !logoVisible}
+                        style={styles.positionButton}
+                      >
+                        <MaterialIcons
+                          name="keyboard-arrow-right"
+                          size={18}
+                          color="#D5DCE3"
+                        />
+                      </Pressable>
+                      <Pressable
+                        onPress={() => adjustLogoPosition(0, 0.1)}
+                        disabled={isSaving || !logoVisible}
+                        style={styles.positionButton}
+                      >
+                        <MaterialIcons
+                          name="keyboard-arrow-down"
+                          size={18}
+                          color="#D5DCE3"
+                        />
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
+
+            {value.style === "exif" && !exif && (
+              <View style={styles.infoNotice}>
+                <MaterialIcons name="info-outline" size={16} color="#F4D298" />
+                <Text style={styles.infoNoticeText}>
+                  未读取到 EXIF 时会显示文件名与本地副本标识。
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.actions}>
+              <Pressable
+                onPress={onClose}
+                disabled={isSaving}
+                style={({ pressed }) => [
+                  styles.cancelButton,
+                  (pressed || isSaving) && styles.pressed,
+                ]}
+              >
+                <Text style={styles.cancelText}>取消</Text>
+              </Pressable>
+              <Pressable
+                onPress={onSave}
+                disabled={isSaving}
+                style={({ pressed }) => [
+                  styles.saveButton,
+                  (pressed || isSaving) && styles.pressed,
+                ]}
+              >
+                <MaterialIcons name="save-alt" size={18} color="#11161C" />
+                <Text style={styles.saveText}>
+                  {isSaving ? "正在生成" : "生成边框副本"}
+                </Text>
+              </Pressable>
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -469,6 +614,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheet: {
+    maxHeight: "92%",
     backgroundColor: "#1B242D",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
@@ -478,6 +624,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "#394955",
   },
+  sheetScroll: { flexGrow: 0 },
+  sheetContent: { paddingBottom: 2 },
   handle: {
     height: 4,
     width: 38,
@@ -638,6 +786,70 @@ const styles = StyleSheet.create({
   },
   brandIconActive: { backgroundColor: "#F4D298", borderColor: "#F4D298" },
   brandLogo: { width: 32, height: 15 },
+  logoControlsCard: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#3B4A55",
+    backgroundColor: "#121A21",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  logoToggleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  logoToggleText: { flex: 1 },
+  logoControlTitle: { color: "#E9EDF0", fontSize: 12, fontWeight: "800" },
+  logoControlHint: {
+    color: "#7E8B95",
+    fontSize: 10,
+    lineHeight: 14,
+    marginTop: 2,
+  },
+  logoControlRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  logoControlLabel: { color: "#B9C4CC", fontSize: 11, fontWeight: "700" },
+  stepper: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stepperButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#26323B",
+    borderWidth: 1,
+    borderColor: "#52616E",
+  },
+  stepperValue: {
+    minWidth: 46,
+    textAlign: "center",
+    color: "#F4D298",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  positionPad: { flexDirection: "row", alignItems: "center", gap: 5 },
+  positionButton: {
+    width: 29,
+    height: 29,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#26323B",
+    borderWidth: 1,
+    borderColor: "#52616E",
+  },
+  positionCenterButton: {
+    width: 29,
+    height: 29,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#382D20",
+    borderWidth: 1,
+    borderColor: "#B9792C",
+  },
   infoNotice: {
     marginTop: 12,
     minHeight: 36,

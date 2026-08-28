@@ -89,7 +89,7 @@ export default function DetailScreen() {
     info: null,
   });
   const [isCropVisible, setIsCropVisible] = useState(false);
-  const [cropRatio, setCropRatio] = useState<CropAspectRatio>("1:1");
+  const [cropRatio, setCropRatio] = useState<CropAspectRatio>("free");
   const [cropSelection, setCropSelection] = useState<CropRect | null>(null);
   const cropSelectionRef = useRef<CropRect | null>(null);
   const [cropError, setCropError] = useState<string | null>(null);
@@ -101,6 +101,10 @@ export default function DetailScreen() {
     style: "solid",
     themeId: "white",
     brandMark: "Sony",
+    logoVisible: true,
+    logoScale: 1,
+    logoOffsetX: 0,
+    logoOffsetY: 0,
   });
   const [notice, setNotice] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewState>({
@@ -244,11 +248,11 @@ export default function DetailScreen() {
     if (file.kind !== "image") {
       Alert.alert(
         "暂不支持 RAW 裁切",
-        "为保留原始 RAW 数据，当前按比例裁切仅支持 PNG、JPG 和 JPEG。本文件仍可正常预览和导出。",
+        "为保留原始 RAW 数据，当前裁切仅支持 PNG、JPG 和 JPEG。本文件仍可正常预览和导出。",
       );
       return;
     }
-    setCropRatio("1:1");
+    setCropRatio("free");
     cropSelectionRef.current = null;
     setCropSelection(null);
     setCropError(null);
@@ -281,7 +285,9 @@ export default function DetailScreen() {
         selectedCrop,
       );
       setIsCropVisible(false);
-      setNotice(`已创建 ${cropRatio} 手动裁切副本`);
+      setNotice(
+        `已创建 ${cropRatio === "free" ? "自由比例" : cropRatio} 手动裁切副本`,
+      );
       hapticSuccess();
       router.push({ pathname: "/detail", params: { id: croppedFile.id } });
     } catch (error) {
@@ -303,7 +309,15 @@ export default function DetailScreen() {
       );
       return;
     }
-    setFrameRequest({ style: "solid", themeId: "white", brandMark: "Sony" });
+    setFrameRequest({
+      style: "solid",
+      themeId: "white",
+      brandMark: "Sony",
+      logoVisible: true,
+      logoScale: 1,
+      logoOffsetX: 0,
+      logoOffsetY: 0,
+    });
     setIsFrameVisible(true);
     if (exifState.status !== "loading") void loadExif();
   }, [exifState.status, file, loadExif]);
@@ -825,9 +839,9 @@ export default function DetailScreen() {
                 <View style={styles.handle} />
                 <View style={styles.exifHeading}>
                   <View style={styles.exifTitleBox}>
-                    <Text style={styles.modalTitle}>手动比例裁切</Text>
+                    <Text style={styles.modalTitle}>手动裁切</Text>
                     <Text style={styles.modalDescription}>
-                      拖动并缩放裁切框后保存为新的应用本地副本，原图不会修改。
+                      支持固定比例或自由比例选区，保存为新的应用本地副本，原图不会修改。
                     </Text>
                   </View>
                   <View style={styles.cropIcon}>
@@ -865,7 +879,7 @@ export default function DetailScreen() {
                           cropRatio === option.id && styles.ratioTextActive,
                         ]}
                       >
-                        {option.id}
+                        {option.id === "free" ? "自由" : option.id}
                       </Text>
                     </Pressable>
                   ))}
@@ -881,8 +895,12 @@ export default function DetailScreen() {
                   </View>
                 ) : (
                   <Text style={styles.cropDescription}>
-                    已选择 {cropRatio}。输出会命名为“{file.baseName}-裁切-
-                    {cropRatio.replace(":", "x")}”。
+                    已选择 {cropRatio === "free" ? "自由比例" : cropRatio}
+                    。输出会命名为“{file.baseName}-裁切-
+                    {cropRatio === "free"
+                      ? "自由"
+                      : cropRatio.replace(":", "x")}
+                    ”。
                   </Text>
                 )}
                 <View style={styles.cropActions}>

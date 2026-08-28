@@ -47,6 +47,10 @@ interface RawDecoderNativeModule {
     subtitle: string,
     details: string,
     brandMark: string,
+    logoVisible: boolean,
+    logoScale: number,
+    logoOffsetX: number,
+    logoOffsetY: number,
   ): Promise<FramedImageResult>;
 }
 
@@ -147,6 +151,10 @@ export async function renderPhotoFrameIntoLibrary(
   foregroundColor: string,
   text: { title: string; subtitle: string; details: string },
   brandMark: string,
+  logoVisible = true,
+  logoScale = 1,
+  logoOffsetX = 0,
+  logoOffsetY = 0,
 ): Promise<FramedImageResult> {
   if (Platform.OS !== "android") {
     throw new Error(
@@ -164,6 +172,10 @@ export async function renderPhotoFrameIntoLibrary(
     text.subtitle,
     text.details,
     brandMark,
+    logoVisible,
+    logoScale,
+    logoOffsetX,
+    logoOffsetY,
   );
 }
 
