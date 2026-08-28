@@ -1,45 +1,120 @@
 # RAW View
 
-> 一款面向 Android 的本地相机照片查看与管理工具，支持导入、预览、重命名和导出常见相机 RAW 与图片文件。
+<p align="center">
+  <strong>面向 Android 摄影工作流的本地 RAW 与照片查看器</strong><br />
+  导入、预览、管理、重命名、裁切与安全导出，不改动设备原始文件。
+</p>
 
-RAW View 将用户导入的文件复制到**应用私有本地图库**中管理。这样的设计避免依赖不同文件提供方的改名能力：即使原文件所在的系统文件提供方不支持改名，应用内副本仍可被可靠重命名并导出。
+<p align="center">
+  <a href="https://github.com/Tony-hnv/rawviewer/actions/workflows/android-release.yml"><img src="https://github.com/Tony-hnv/rawviewer/actions/workflows/android-release.yml/badge.svg?branch=main" alt="Android Release CI" /></a>
+  <a href="https://github.com/Tony-hnv/rawviewer/releases/tag/v1.1.7"><img src="https://img.shields.io/github/v/release/Tony-hnv/rawviewer?label=release" alt="Latest release" /></a>
+</p>
 
-## 功能概览
+> **RAW View 的核心原则**：应用只管理导入后的本地副本。重命名、裁切、照片边框和导出都会生成或操作应用私有目录中的副本；设备上的原始文件不会被覆盖，也不会因清除图库而删除。
 
-| 能力         | 说明                                                                                                          |
-| ------------ | ------------------------------------------------------------------------------------------------------------- |
-| 文件导入     | 从 Android 系统文件选择器导入受支持文件，并建立应用本地副本。                                                 |
-| 格式筛选     | 按全部、RAW、JPG / PNG 筛选本地图库。                                                                         |
-| 图片预览     | 支持 PNG、JPG、JPEG 的直接预览；RAW 文件通过原生 LibRaw 桥接生成本地 PNG 预览缓存。                           |
-| 安全重命名   | 固定保留扩展名、自动清理非法字符、避免名称冲突，并校验本地副本是否真正改名。                                  |
-| 同步状态     | 改名后明确显示“已改本地副本 / 原文件未改”或“已改本地副本和原文件”。                                           |
-| 文件夹导出   | 通过 Android 系统文件夹选择器，将本地副本导出到用户指定目录。                                                 |
-| 全屏浏览     | 点击图片进入全屏，支持双指缩放、单指拖动、双击在 100% 与 200% 间切换，以及“适应屏幕”复位。                    |
-| EXIF 信息    | 读取标准与厂商 RAW 元数据，支持复制到剪贴板或通过系统分享为文本文件。                                         |
-| 手动比例裁切 | 支持为 PNG、JPG、JPEG 选择 1:1、4:3、3:4、16:9 或 9:16 比例；可拖动裁切框位置、缩放框的尺寸，并保存为新副本。 |
-| 选择并清除   | 长按图片进入单选/多选模式，可选择当前筛选中的全部或部分项目后，经二次确认清除应用本地副本。                   |
-| 照片边框     | 为 PNG、JPG、JPEG 生成比例不变的上图下信息栏边框，支持纯色留白、EXIF 参数和带图标的相机/手机品牌标识。        |
-| 导航体验     | 文件详情支持返回按钮与左侧边缘右滑返回文件库。                                                                |
+## 产品定位
+
+RAW View 是一款以本地优先为设计重点的 Android 照片工具。它通过 Android 系统文件选择器导入相机 RAW 与常见图片，在应用私有图库中建立可追踪的副本，并提供适合摄影整理场景的预览、元数据查看、重命名、筛选、裁切、边框合成和文件夹导出能力。
+
+应用不要求用户先上传云端，也不依赖原文件提供方必须支持改名。对于 Sony、Canon、Nikon 和 Panasonic 相机文件，RAW 预览与厂商元数据读取由 Android 原生模块完成；普通图片则直接使用本地图片管线处理。[1] [2]
 
 ## 支持格式
 
-| 厂商或类别 | 格式                    | 应用内标记    |
-| ---------- | ----------------------- | ------------- |
-| Sony       | `.arw`                  | Sony RAW      |
-| Canon      | `.cr2`、`.cr3`          | Canon RAW     |
-| Nikon      | `.nef`                  | Nikon RAW     |
-| Panasonic  | `.rw2`                  | Panasonic RAW |
-| 常见图片   | `.png`、`.jpg`、`.jpeg` | Image         |
+| 来源类别      | 扩展名                  | 主要能力                                    |
+| ------------- | ----------------------- | ------------------------------------------- |
+| Sony RAW      | `.arw`                  | RAW 预览、重命名、EXIF 与厂商元数据查看     |
+| Canon RAW     | `.cr2`、`.cr3`          | RAW 预览、重命名、EXIF 与可用厂商元数据查看 |
+| Nikon RAW     | `.nef`                  | RAW 预览、重命名、EXIF 与厂商元数据查看     |
+| Panasonic RAW | `.rw2`                  | RAW 预览、重命名、EXIF 与厂商元数据查看     |
+| 常见图片      | `.png`、`.jpg`、`.jpeg` | 预览、重命名、裁切、照片边框与导出          |
 
-## 技术栈
+> RAW 的实际解码结果仍取决于相机型号、压缩方式、文件编码变体、设备内存和 LibRaw 支持范围。应用会对暂不支持的 RAW 元数据或预览情况给出明确提示。[2]
 
-项目基于 Expo SDK 54、React Native 0.81、React 19 和 TypeScript 构建。路由采用 Expo Router，手势采用 `react-native-gesture-handler` 与 Reanimated，本地图库元数据使用 AsyncStorage 保存。Android 原生模块借助 LibRaw 负责 RAW 解码，并用 Android Storage Access Framework 处理可写文档 URI 与用户选定目录导出。[1] [2]
+## 功能矩阵
 
-## 快速开始
+| 模块       | 能力                                                      | 安全与行为说明                         |
+| ---------- | --------------------------------------------------------- | -------------------------------------- |
+| 本地图库   | 导入、持久化、按全部 / RAW / JPG-PNG 筛选                 | 导入内容复制到应用私有目录             |
+| 文件管理   | 安全重命名、状态标签、单选 / 多选清除、当前筛选全选       | 扩展名保留；清除不删除设备原文件       |
+| 图片预览   | PNG、JPG、JPEG 直接预览；RAW 原生解码预览                 | 支持详情页与全屏查看                   |
+| 全屏查看   | 双指缩放、单指拖动、双击切换、显示缩放比例                | “适应屏幕”可快速复位                   |
+| EXIF       | 相机、镜头、时间、光圈、快门、ISO、焦距及可用厂商字段     | 支持复制到剪贴板和系统分享             |
+| 手动裁切   | `1:1`、`4:3`、`3:4`、`16:9`、`9:16`；拖动位置并缩放选区   | 仅对 PNG、JPG、JPEG 生成新副本         |
+| 照片边框   | 纯色留白、画廊圆角、胶片日期、拍立得、EXIF 参数、品牌标识 | 保持原图比例；上、左、右边框等宽       |
+| 文件夹导出 | 导出本地副本到用户选定的 Android 文件夹                   | 通过 Storage Access Framework 获取授权 |
+| 导航       | 详情页返回按钮与左侧边缘右滑返回                          | 遵循 Android 返回行为                  |
+
+## 照片边框与品牌 Logo
+
+照片边框适用于 PNG、JPG 和 JPEG。所有边框使用原图像素尺寸布局，图片区域按比例绘制，底部信息栏独立向下增加高度，因此不会通过拉伸图片来填充边框。可用主题包括**画廊白、暗房黑、象牙米和胶片灰**。
+
+| 模板      | 视觉效果             | 主要内容                          |
+| --------- | -------------------- | --------------------------------- |
+| 纯色留白  | 三边等宽的简洁留白   | 纯色画廊边框                      |
+| 画廊圆角  | 图片角部圆角处理     | 保持图片比例与独立底栏            |
+| 胶片日期  | 上下齿孔与日期戳     | 文件名和拍摄日期信息              |
+| 拍立得    | 圆角图片与加高底栏   | 标题、日期和拍摄信息              |
+| EXIF 参数 | 摄影参数信息栏       | 相机、镜头、光圈、快门、ISO、焦距 |
+| 品牌标识  | 品牌 Logo 与品牌名称 | 相机和手机品牌识别信息            |
+
+品牌标识模板使用可辨识的单色透明品牌 Logo，而不是相机 / 手机类别图形或首字母徽章。目前覆盖 **Sony、Canon、Nikon、Fujifilm、Leica、Hasselblad、Panasonic、Apple、Samsung、Google、Huawei、Xiaomi、OPPO、vivo**。Logo 仅用于用户选择品牌信息时的识别展示，不表示 RAW View 与相关商标权利人存在关联、授权或背书。资源来源与维护说明见 [`assets/brand-logos/SOURCES.md`](assets/brand-logos/SOURCES.md)。
+
+## 安全副本模型
+
+```text
+设备原始文件
+      │ Android 系统文件选择器导入
+      ▼
+RAW View 应用私有目录 raw-view-library/
+      │
+      ├── 重命名：更新应用副本与图库记录
+      ├── 裁切：生成新的 PNG/JPG/JPEG 副本
+      ├── 边框：生成新的 PNG/JPG/JPEG 副本
+      └── 导出：复制到用户明确授权的目标文件夹
+```
+
+> **不会发生的操作**：应用不会覆盖设备原始文件；图库清除不会删除设备原始文件；RAW 不会被直接裁切或添加边框。
+
+## 使用流程
+
+### 导入与预览
+
+在文件库点击“导入文件”，使用 Android 系统选择器选择受支持的 RAW、PNG 或 JPG 文件。导入完成后，应用会创建本地副本并将其加入图库。点击卡片可打开详情页，再点击预览图可进入全屏查看。
+
+### 重命名与导出
+
+详情页中的重命名只修改文件名主体并保留原扩展名。应用优先确保本地副本完成重命名；如果原文件提供方不支持同步改名，界面会显示“已改本地副本 / 原文件未改”。点击“导出副本”后，在系统文件夹选择器中确认目标目录即可。
+
+### EXIF 与厂商元数据
+
+在详情页打开 EXIF 面板，可查看普通图片的标准 EXIF，以及 ARW、CR2、CR3、NEF、RW2 中可读取的厂商拍摄字段。面板支持复制可见信息和通过 Android 系统分享为文本文件。没有可读取字段时，应用会显示降级提示而不是填充虚构数据。
+
+### 手动比例裁切
+
+选择比例后，拖动裁切框调整位置，拖动右下角手柄或使用双指手势调整选区大小。应用会将显示坐标换算到经过 EXIF 方向归一化的原图像素坐标，再写入新的应用私有副本。原图与原始导入文件保持不变。
+
+### 清除图库
+
+点击工具栏的选择入口或长按文件卡片进入选择模式。可逐项选择、取消选择，或使用“全选当前”选择当前筛选结果。完成二次确认后，应用只删除所选的 RAW View 私有副本与图库记录；删除失败的记录会保留并提示重试。
+
+## 技术架构
+
+RAW View 使用 Expo SDK 54 与 React Native 构建，采用 Expo Router 管理页面，AsyncStorage 保存本地图库索引，Android 原生 Kotlin 模块负责 RAW 解码、EXIF / 厂商元数据、EXIF 方向归一化裁切和照片边框合成。品牌 Logo 以离线透明 PNG 资源打包，在 React Native 编辑器和 Android 原生导出模块中共用稳定的品牌映射。
+
+| 层级       | 关键文件                                                             | 职责                                   |
+| ---------- | -------------------------------------------------------------------- | -------------------------------------- |
+| 页面       | `app/(tabs)/index.tsx`、`app/detail.tsx`                             | 文件库、筛选、详情、管理操作           |
+| 编辑器     | `components/manual-cropper.tsx`、`components/photo-frame-editor.tsx` | 手动裁切与边框选择预览                 |
+| 本地业务   | `lib/photo-library.ts`、`lib/photo-crop.ts`、`lib/photo-frame.ts`    | 副本、图库索引、裁切与边框保存         |
+| 原生桥接   | `lib/local-file-bridge.ts`、`plugins/with-raw-decoder.js`            | SAF、RAW、EXIF、原生图片处理           |
+| 几何与映射 | `lib/crop-math.ts`、`lib/photo-frame-math.ts`、`lib/brand-logo.ts`   | 坐标、比例、版式与品牌 Logo 资源映射   |
+| 测试       | `tests/*.test.ts`                                                    | RAW 文件模型、EXIF、裁切和边框回归测试 |
+
+## 开发环境与运行
 
 ### 环境要求
 
-开发 Android 原生功能需要 Node.js、pnpm、Android Studio（Android SDK）以及与 Expo / Gradle 配套的 Java 环境。RAW 解码、应用副本改名和指定文件夹导出均依赖原生 Android 构建，**不能在 Expo Go 中使用**。
+开发 Android 原生功能需要 Node.js、pnpm、Android Studio、Android SDK 以及与 Expo / Gradle 兼容的 Java 环境。RAW 解码、应用私有副本处理和 Android 文件夹导出依赖原生工程，不能通过 Expo Go 完成验证。
 
 ### 安装与运行
 
@@ -48,125 +123,71 @@ git clone https://github.com/Tony-hnv/rawviewer.git
 cd rawviewer
 pnpm install
 
-# 首次生成 Android 原生工程，或原生配置插件变更后执行
+# 首次生成 Android 原生工程，或修改原生配置插件后执行
 npx expo prebuild --platform android
 
-# 连接 Android 设备或启动模拟器后运行
+# 连接 Android 设备或启动模拟器
 pnpm android
 ```
 
-如需启动开发服务，可执行：
+启动开发服务：
 
 ```bash
 pnpm dev
 ```
 
-## 使用说明
-
-### 导入与预览
-
-在文件库点击“导入文件”，从系统选择器中选择受支持的文件。导入完成后，RAW View 会先将内容复制进应用本地图库；PNG、JPG、JPEG 可直接预览，RAW 文件首次打开时会生成设备本地预览缓存。RAW 的实际兼容性还取决于相机型号、压缩方式和 LibRaw 的解码支持范围。[2]
-
-### 重命名状态
-
-重命名只编辑文件名主体，原扩展名会保留。应用会先保证**本地副本**已重命名并写入本地图库记录，然后再尽力同步原文件：
-
-| 状态标签                    | 含义                                                             |
-| --------------------------- | ---------------------------------------------------------------- |
-| `已改本地副本和原文件`      | 应用副本与原文件均已完成改名。                                   |
-| `已改本地副本 / 原文件未改` | 本地副本已经成功改名，但原文件所在提供方不支持或未允许同步改名。 |
-| `当前管理应用本地副本`      | 文件尚未在 RAW View 中改名，当前由应用本地图库管理。             |
-
-### 导出本地副本
-
-在详情页点击“导出副本”，在 Android 系统界面选择目标文件夹并确认。应用只会向用户明确授权的目录写入导出文件，不会尝试直接写入任意公共路径。
-
-### 全屏缩放
-
-点击预览图进入全屏模式。顶部会显示当前缩放比例；可用双指缩放、单指拖动查看局部，双击在 100% 与 200% 间切换，或点击“适应屏幕”回到 100%。
-
-### EXIF 信息
-
-在详情页点击“查看 EXIF 信息”即可按需读取应用本地副本。对于包含标准 EXIF 的 JPG、JPEG、PNG，界面会展示可用的相机、镜头、拍摄时间和曝光参数。对于 Sony ARW、Canon CR2、Nikon NEF 与 Panasonic RW2，应用会通过 Android 原生 metadata-extractor 读取可用的厂商拍摄参数并标记“厂商 RAW 元数据”。Canon CR3 与个别相机编码变体若未暴露标准标签，界面会明确提示而不会影响预览或导出。
-
-EXIF 弹窗支持“复制”与“分享”。复制会将可见拍摄参数写入系统剪贴板；分享会在应用缓存中创建短文本文件并打开 Android 系统分享面板。
-
-### 按比例裁切
-
-在详情页点击“手动比例裁切”，选择 `1:1`、`4:3`、`3:4`、`16:9` 或 `9:16`。裁切画布会显示图片实际可见范围与初始居中裁切框：拖动裁切框选择位置，拖动右下角手柄调整大小，也可双指缩放裁切框。应用会把显示坐标换算为原图像素后再裁切，结果始终保存为**新的应用本地副本**，不会改动原图或原始导入文件。为保留 RAW 原始数据，裁切仅适用于 PNG、JPG 和 JPEG；RAW 文件会给出明确提示。
-
-### 清除已导入图片
-
-在文件库右上角点击“选择图片”图标，或长按任意文件卡片，即可进入多选模式。轻点卡片可单选或取消选择，“全选当前”只影响当前筛选结果；点击“删除”并完成二次确认后，仅会移除所选的 RAW View 本地副本与图库记录。该操作**不删除设备原始文件**；若个别应用副本暂时无法删除，其记录会保留并明确提示，以便后续安全重试。
-
-### 照片边框
-
-在 PNG、JPG 或 JPEG 详情页点击“照片边框”，可选择画廊白、暗房黑、象牙米或胶片灰配色，并在以下模板间切换：纯色留白、画廊圆角、胶片日期、拍立得、EXIF 参数和品牌标识。所有模板都会按原图像素尺寸绘制，图片上、左、右三边使用同一等宽边距，绝不拉伸变形。画廊圆角只对图片角部进行裁切；胶片日期模板在等宽边框中加入上下齿孔和日期戳；拍立得模板使用圆角照片、加高底部留白、标题与拍摄信息。EXIF 参数模板会展示可读取的相机、镜头、光圈、快门、ISO 与焦距；品牌标识模板提供 Sony、Canon、Nikon、Fujifilm、Leica、Hasselblad、Panasonic、Apple、Samsung、Google、Huawei、Xiaomi、OPPO 与 vivo 等常见相机和手机品牌的分类图标、字母徽章与品牌字样。边框由 Android 本地模块渲染并写入**新的应用私有副本**，不会修改原图；RAW 文件仍保持只读保护。
-
-## 项目结构
-
-```text
-app/
-  (tabs)/index.tsx           # 文件库、筛选与导入入口
-  detail.tsx                 # 独立文件详情、改名、导出与预览
-components/
-  zoomable-image.tsx         # 全屏缩放图片组件
-  manual-cropper.tsx         # 手动拖动、缩放与比例锁定的裁切编辑器
-  photo-frame-editor.tsx     # 纯色、EXIF 参数和品牌标识边框编辑器
-lib/
-  photo-library.ts           # 本地图库、导入、持久化、改名与导出流程
-  local-file-bridge.ts       # TypeScript 到 Android 原生文件桥接
-  exif-info.ts               # EXIF 数据模型、原生调用与展示格式化
-  crop-math.ts               # 裁切框边界、缩放和显示坐标到原图像素的换算
-  photo-crop.ts              # 图片裁切与新本地副本保存
-  photo-frame.ts             # 照片边框参数、排版文案与新副本保存
-  raw-files.ts               # 支持格式、文件模型与名称清洗
-  raw-preview.ts             # RAW 预览调用层
-plugins/
-  with-raw-decoder.js        # Expo 配置插件：LibRaw 与 Android 原生模块
-tests/
-  raw-files.test.ts          # 格式识别与文件名规则测试
-  exif-info.test.ts          # EXIF 展示格式化测试
-  photo-crop.test.ts         # 居中与手动比例裁切几何计算测试
-  photo-frame.test.ts        # 照片边框参数与 EXIF 排版测试
-```
-
-## 质量检查
-
-在提交前可运行以下检查：
+### 常用检查
 
 ```bash
 pnpm test
 pnpm check
 pnpm lint
+pnpm exec prettier --check .
 npx expo config --json
 ```
 
-当前开发版本为 **1.1.6**，Android `versionCode` 为 **17**。此版本补充画廊圆角、胶片日期戳与拍立得三种边框模板，并保持上、左、右等宽边距、原图比例和新本地副本保护；尚未自动推送或发布新的 GitHub Release。
+## 签名构建与 Release
 
-## 自动构建与 GitHub Release
+仓库中的 [Android Release 工作流](.github/workflows/android-release.yml) 支持两种触发方式：推送形如 `v1.1.7` 的 Git tag，或在 GitHub Actions 中手动运行 **Android Release APK** 并传入 `tag`。工作流会执行干净的 Expo Android 预构建、恢复 GitHub Secrets 中的签名配置、运行 Gradle Release 编译、使用 `apksigner` 校验 APK，并将签名 APK 上传到对应的 GitHub Release 和 Actions Artifact。
 
-仓库包含 Android Release 构建工作流。推送形如 `v1.0.8` 的 Git tag，或从 GitHub Actions 手动运行 **Android Release APK** 工作流，会执行干净的 Android 预构建、生成已签名 APK、校验签名，并将产物上传到对应的 GitHub Release。
+同一个 Android 包名的后续版本必须继续使用同一套签名密钥，才能覆盖安装已发布版本。签名材料只保存在仓库加密 Secrets 中，不应写入 Git 历史。[3]
 
-工作流使用仓库的加密机密变量保存签名材料，密钥文件不会写入 Git 历史。发布前请确认 `app.config.ts` 中的 `version` 与 Android `versionCode` 已按需更新；同一应用包名的新版本必须使用同一签名密钥，才能覆盖安装已发布版本。[3]
+## v1.1.7 Release
+
+**v1.1.7** 已于 2026 年 8 月 28 日发布。本版本将品牌标识模板升级为 14 个可辨识的品牌 Logo，并让品牌选择器、编辑器预览与 Android 本地导出使用同一套离线资源；同时保持照片比例、三边等宽、底栏独立加高和应用私有新副本保护。
+
+| 项目                | 内容                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------- |
+| GitHub Release      | [RAW View v1.1.7](https://github.com/Tony-hnv/rawviewer/releases/tag/v1.1.7)                            |
+| APK 下载            | [RAW-View-1.1.7.apk](https://github.com/Tony-hnv/rawviewer/releases/download/v1.1.7/RAW-View-1.1.7.apk) |
+| APK 大小            | 54,481,117 bytes                                                                                        |
+| SHA-256             | `537148a341abf036fb8adeceda33f72628205009393c5f184f47e3809d6501eb`                                      |
+| GitHub main 提交    | `c5b296d0b2be565f7f866106648a284957390746`                                                              |
+| Actions 运行        | [33134778318](https://github.com/Tony-hnv/rawviewer/actions/runs/33134778318)                           |
+| Android versionCode | `18`                                                                                                    |
+
+> 安装 APK 后建议优先在真实 Android 设备上验证：品牌 Logo 在浅色 / 深色主题下的清晰度、品牌边框导出后的新副本是否进入图库，以及原图是否保持不变。
 
 ## 当前限制
 
-| 项目       | 说明                                                                                                   |
-| ---------- | ------------------------------------------------------------------------------------------------------ |
-| 平台       | RAW 解码、可写文档选择与指定文件夹导出目前面向 Android 原生构建。                                      |
-| Expo Go    | 不包含自定义 LibRaw / 文件管理原生模块，因此无法验证 RAW 预览、应用副本改名与文件夹导出。              |
-| 原文件改名 | Android 文件提供方可能返回“不支持改名”；这不会阻止应用本地副本改名。                                   |
-| RAW 预览   | 是否能成功解码由源文件、相机编码变体、设备可用内存和 LibRaw 支持情况共同决定。                         |
-| RAW EXIF   | ARW、CR2、NEF、RW2 的可用标签会被解析；CR3 与厂商编码变体的可读字段取决于文件实际标签。                |
-| 比例裁切   | PNG、JPG、JPEG 支持在比例锁定下手动移动和缩放裁切框；裁切 RAW 需先导出或转换为普通图片。               |
-| 照片边框   | 边框导出仅支持 PNG、JPG、JPEG，需使用 Android 原生构建；品牌模板显示品牌字样，不提供厂商官方矢量商标。 |
-| 清除图库   | 删除仅作用于用户选中的应用私有副本和图库记录；不会删除设备原始文件或源文件 URI。                       |
+| 项目       | 当前状态                                                                                                                |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| 平台       | RAW 解码、可写文档选择和文件夹导出目前面向 Android 原生构建。                                                           |
+| Expo Go    | 不包含自定义 LibRaw 与文件管理原生模块，不能用于完整功能验收。                                                          |
+| 原文件改名 | 文件提供方可能拒绝同步改名，但不影响应用私有副本改名。                                                                  |
+| RAW 预览   | 兼容性由源文件编码、设备内存与 LibRaw 支持范围共同决定。                                                                |
+| RAW EXIF   | 可读取字段取决于文件实际标签；CR3 和部分厂商变体可能只提供部分信息。                                                    |
+| 裁切与边框 | 当前仅对 PNG、JPG、JPEG 生成新副本；RAW 保持只读。                                                                      |
+| 真机验收   | 当前 CI 已完成签名构建与 `apksigner` 校验，仍需在真实 Android 设备端到端验证导入、RAW、EXIF、裁切、边框和选择删除流程。 |
 
 ## 参考资料
 
-[1] [Expo：FileSystem](https://docs.expo.dev/versions/latest/sdk/filesystem/)
+[1] [Expo Documentation](https://docs.expo.dev/)
 
 [2] [LibRaw 官方网站](https://www.libraw.org/)
 
 [3] [Android Developers：应用签名](https://developer.android.com/studio/publish/app-signing)
+
+## 许可与商标说明
+
+本仓库当前未附独立 `LICENSE` 文件；如需在仓库外分发或二次使用代码，请先确认项目所有者的授权范围。Sony、Canon、Nikon、Fujifilm、Leica、Hasselblad、Panasonic、Apple、Samsung、Google、Huawei、Xiaomi、OPPO、vivo 等名称与 Logo 均归各自权利人所有。RAW View 仅将其作为用户选择品牌信息时的识别元素，不主张拥有相关商标权利，也不暗示任何商业关联或官方背书。
