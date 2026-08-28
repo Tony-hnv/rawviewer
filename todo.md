@@ -110,6 +110,6 @@
 - [x] 为自由裁切和 Logo 调节补充单元测试与 Android 原生注入验证
 - [ ] 在真实 Android 设备验收自由裁切、Logo 调节和 UI 操作体验
 
-- [ ] 将 RAW View 1.2.0 自由裁切、Logo 调节和 UI 改动同步至 GitHub main
-- [ ] 触发并监控 RAW View 1.2.0 Android 签名 Release CI
-- [ ] 核验新的签名 APK、SHA-256 与 GitHub Release 资产
+- [x] 将 RAW View 1.2.0 自由裁切、Logo 调节和 UI 改动同步至 GitHub main
+- [x] 触发并监控 RAW View 1.2.0 Android 签名 Release CI
+- [x] 核验新的签名 APK、SHA-256 与 GitHub Release 资产
