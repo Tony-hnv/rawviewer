@@ -99,3 +99,7 @@
 - [x] 将 RAW View 1.1.7 官方品牌 Logo 改动提交并同步至 GitHub main
 - [x] 触发并监控 RAW View 1.1.7 Android 签名 Release CI
 - [x] 核验新的签名 APK、SHA-256 与 GitHub Actions 产物
+
+- [x] 重构 README 内容结构与样式，补充当前功能和使用说明
+- [x] 补充 RAW View v1.1.7 Release 下载、校验和与变更内容
+- [x] 将 README 更新同步到 GitHub 并更新公开 Release 说明
