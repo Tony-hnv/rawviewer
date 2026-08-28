@@ -25,7 +25,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.RectF
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
@@ -333,6 +335,31 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
     }
   }
 
+  private fun drawFilmPerforations(
+    canvas: Canvas,
+    outputWidth: Int,
+    outputHeight: Int,
+    sideInset: Int,
+    foreground: Int,
+  ) {
+    val holeSize = max(5f, sideInset * 0.34f)
+    val gap = max(4f, holeSize * 0.62f)
+    val count = max(4, min(16, ((outputWidth - sideInset * 2) / (holeSize + gap)).roundToInt()))
+    val span = count * holeSize + (count - 1) * gap
+    val startX = (outputWidth - span) / 2f
+    val holePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      color = foreground
+      alpha = 170
+      style = Paint.Style.FILL
+    }
+    for (index in 0 until count) {
+      val left = startX + index * (holeSize + gap)
+      canvas.drawRoundRect(left, sideInset * 0.25f, left + holeSize, sideInset * 0.25f + holeSize, holeSize * 0.18f, holeSize * 0.18f, holePaint)
+      val bottomTop = outputHeight - sideInset * 0.25f - holeSize
+      canvas.drawRoundRect(left, bottomTop, left + holeSize, bottomTop + holeSize, holeSize * 0.18f, holeSize * 0.18f, holePaint)
+    }
+  }
+
   @ReactMethod
   fun createPhotoFrame(
     localUri: String,
@@ -355,9 +382,16 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       val upright = decodeUprightBitmap(sourceFile)
       uprightBitmap = upright
       val shortSide = min(upright.width, upright.height)
-      val sideInset = max(28, (shortSide * 0.052f).roundToInt())
-      val informationStyle = style == "exif" || style == "brand"
-      val bottomInset = if (informationStyle) max(sideInset * 3, (shortSide * 0.17f).roundToInt()) else sideInset
+      val sideRatio = if (style == "film") 0.068f else if (style == "polaroid") 0.062f else 0.052f
+      val sideInset = max(28, (shortSide * sideRatio).roundToInt())
+      val informationStyle = style == "exif" || style == "brand" || style == "polaroid"
+      val filmStyle = style == "film"
+      val roundedStyle = style == "rounded" || style == "polaroid"
+      val bottomInset = when {
+        style == "polaroid" -> max(sideInset * 4, (shortSide * 0.24f).roundToInt())
+        informationStyle -> max(sideInset * 3, (shortSide * 0.17f).roundToInt())
+        else -> sideInset
+      }
       val outputWidth = upright.width + sideInset * 2
       val outputHeight = upright.height + sideInset + bottomInset
       val output = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
@@ -376,12 +410,42 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       val drawHeight = upright.height
       check(drawLeft + drawWidth + sideInset == outputWidth) { "FRAME_LAYOUT_FAILED: Horizontal frame margins are not equal." }
       check(drawTop == sideInset) { "FRAME_LAYOUT_FAILED: Top frame margin is invalid." }
-      canvas.drawBitmap(
-        upright,
-        drawLeft.toFloat(),
-        drawTop.toFloat(),
-        Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
-      )
+      val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+      if (roundedStyle) {
+        val radius = max(12f, shortSide * 0.022f)
+        val clipPath = Path().apply {
+          addRoundRect(
+            RectF(
+              drawLeft.toFloat(),
+              drawTop.toFloat(),
+              (drawLeft + drawWidth).toFloat(),
+              (drawTop + drawHeight).toFloat(),
+            ),
+            radius,
+            radius,
+            Path.Direction.CW,
+          )
+        }
+        canvas.save()
+        canvas.clipPath(clipPath)
+        canvas.drawBitmap(upright, drawLeft.toFloat(), drawTop.toFloat(), bitmapPaint)
+        canvas.restore()
+      } else {
+        canvas.drawBitmap(upright, drawLeft.toFloat(), drawTop.toFloat(), bitmapPaint)
+      }
+
+      if (filmStyle) {
+        drawFilmPerforations(canvas, outputWidth, outputHeight, sideInset, foreground)
+        drawFrameText(
+          canvas,
+          if (details.isBlank()) "RAW VIEW" else details,
+          sideInset.toFloat(),
+          outputHeight - max(6f, sideInset * 0.18f),
+          max(10f, min(22f, shortSide * 0.018f)),
+          foreground,
+          bold = true,
+        )
+      }
 
       if (informationStyle) {
         val textX = sideInset.toFloat()
@@ -389,9 +453,9 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
         val titleSize = max(18f, min(44f, shortSide * if (style == "brand") 0.045f else 0.031f))
         val subtitleSize = max(11f, min(25f, shortSide * 0.018f))
         val detailSize = max(10f, min(22f, shortSide * 0.015f))
-        val titleY = captionTop + bottomInset * 0.34f
-        val subtitleY = captionTop + bottomInset * 0.56f
-        val detailY = captionTop + bottomInset * 0.78f
+        val titleY = captionTop + bottomInset * if (style == "polaroid") 0.46f else 0.34f
+        val subtitleY = captionTop + bottomInset * if (style == "polaroid") 0.66f else 0.56f
+        val detailY = captionTop + bottomInset * if (style == "polaroid") 0.84f else 0.78f
         drawFrameText(canvas, title, textX, titleY, titleSize, foreground, bold = true)
         drawFrameText(canvas, subtitle, textX, subtitleY, subtitleSize, foreground)
         drawFrameText(canvas, details, textX, detailY, detailSize, foreground, bold = true)

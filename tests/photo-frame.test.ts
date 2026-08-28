@@ -5,7 +5,10 @@ import {
   getContainedFrameImageRect,
   getBrandMonogram,
   getPhotoFrameLayout,
+  hasFrameInformation,
+  isFilmFrame,
   isPhoneBrand,
+  isRoundedFrame,
   type PhotoFrameRequest,
 } from "../lib/photo-frame-math";
 import type { LibraryFile } from "@/lib/raw-files";
@@ -92,6 +95,25 @@ describe("photo frame metadata", () => {
     expect(layout.outputHeight - layout.imageTop - layout.imageHeight).toBe(
       layout.sideInset,
     );
+  });
+
+  it("provides a wider independent caption panel for a polaroid frame", () => {
+    const layout = getPhotoFrameLayout(1200, 800, "polaroid");
+    expect(hasFrameInformation("polaroid")).toBe(true);
+    expect(isRoundedFrame("polaroid")).toBe(true);
+    expect(layout.informationHeight).toBeGreaterThanOrEqual(
+      layout.sideInset * 4,
+    );
+    expect(layout.imageTop).toBe(layout.sideInset);
+    expect(layout.outputWidth - layout.imageWidth).toBe(layout.sideInset * 2);
+  });
+
+  it("formats film date-stamp text and identifies the film template", () => {
+    const text = buildFrameText(file, null, { ...request, style: "film" });
+    expect(isFilmFrame("film")).toBe(true);
+    expect(text.title).toBe("RAW VIEW");
+    expect(text.subtitle).toBe("HARBOR");
+    expect(text.details).toMatch(/^1970\.01\.01$/);
   });
 
   it("distinguishes camera and phone brands for visual icon badges", () => {

@@ -1,7 +1,13 @@
 import type { ExifInfo } from "@/lib/exif-info";
 import type { LibraryFile } from "@/lib/raw-files";
 
-export type PhotoFrameStyle = "solid" | "exif" | "brand";
+export type PhotoFrameStyle =
+  | "solid"
+  | "rounded"
+  | "film"
+  | "polaroid"
+  | "exif"
+  | "brand";
 export type PhotoFrameThemeId = "white" | "black" | "ivory" | "slate";
 export type BrandMarkId =
   | "Sony"
@@ -44,6 +50,9 @@ export const PHOTO_FRAME_STYLES: {
   description: string;
 }[] = [
   { id: "solid", label: "纯色留白", description: "简约画廊式边框" },
+  { id: "rounded", label: "画廊圆角", description: "圆角图片与留白边框" },
+  { id: "film", label: "胶片日期", description: "齿孔与日期戳风格" },
+  { id: "polaroid", label: "拍立得", description: "宽底部留白与标题" },
   { id: "exif", label: "EXIF 参数", description: "显示相机与曝光信息" },
   { id: "brand", label: "品牌标识", description: "显示相机或手机品牌字样" },
 ];
@@ -125,6 +134,18 @@ export type PhotoFrameLayout = {
   informationHeight: number;
 };
 
+export function hasFrameInformation(style: PhotoFrameStyle): boolean {
+  return style === "exif" || style === "brand" || style === "polaroid";
+}
+
+export function isRoundedFrame(style: PhotoFrameStyle): boolean {
+  return style === "rounded" || style === "polaroid";
+}
+
+export function isFilmFrame(style: PhotoFrameStyle): boolean {
+  return style === "film";
+}
+
 /**
  * Calculates the physical frame layout used by both the preview and Android renderer.
  * The source bitmap is drawn at its decoded size. Therefore left, right and top
@@ -152,11 +173,16 @@ export function getPhotoFrameLayout(
   }
 
   const shortSide = Math.min(sourceWidth, sourceHeight);
-  const sideInset = Math.max(28, Math.round(shortSide * 0.052));
-  const hasInformation = style === "exif" || style === "brand";
-  const bottomInset = hasInformation
-    ? Math.max(sideInset * 3, Math.round(shortSide * 0.17))
-    : sideInset;
+  const sideRatio =
+    style === "film" ? 0.068 : style === "polaroid" ? 0.062 : 0.052;
+  const sideInset = Math.max(28, Math.round(shortSide * sideRatio));
+  const hasInformation = hasFrameInformation(style);
+  const bottomInset =
+    style === "polaroid"
+      ? Math.max(sideInset * 4, Math.round(shortSide * 0.24))
+      : hasInformation
+        ? Math.max(sideInset * 3, Math.round(shortSide * 0.17))
+        : sideInset;
   const informationTop = sideInset + sourceHeight;
 
   return {
@@ -223,8 +249,26 @@ export function buildFrameText(
   request: PhotoFrameRequest,
 ): FrameText {
   const camera = [exif?.make, exif?.model].filter(Boolean).join(" ").trim();
-  if (request.style === "solid") {
+  if (request.style === "solid" || request.style === "rounded") {
     return { title: "", subtitle: "", details: "" };
+  }
+  if (request.style === "film") {
+    const importedDate = new Date(file.importedAt)
+      .toISOString()
+      .slice(0, 10)
+      .replaceAll("-", ".");
+    return {
+      title: "RAW VIEW",
+      subtitle: file.baseName.toUpperCase(),
+      details: importedDate,
+    };
+  }
+  if (request.style === "polaroid") {
+    return {
+      title: file.baseName,
+      subtitle: camera || "RAW VIEW · POLAROID",
+      details: exposureRows(exif) || "本地图片副本",
+    };
   }
   if (request.style === "brand") {
     return {

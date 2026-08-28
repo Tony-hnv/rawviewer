@@ -1,6 +1,8 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { Image, NativeModules, Platform } from "react-native";
 
+import type { PhotoFrameStyle } from "@/lib/photo-frame-math";
+
 interface NativeFileRenameResult {
   uri: string;
   sourceUri?: string | null;
@@ -38,7 +40,7 @@ interface RawDecoderNativeModule {
     localUri: string,
     destinationUri: string,
     format: "png" | "jpeg",
-    style: "solid" | "exif" | "brand",
+    style: PhotoFrameStyle,
     backgroundColor: string,
     foregroundColor: string,
     title: string,
@@ -140,7 +142,7 @@ export async function renderPhotoFrameIntoLibrary(
   localUri: string,
   destinationUri: string,
   format: "png" | "jpeg",
-  style: "solid" | "exif" | "brand",
+  style: PhotoFrameStyle,
   backgroundColor: string,
   foregroundColor: string,
   text: { title: string; subtitle: string; details: string },

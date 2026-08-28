@@ -2,7 +2,6 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Image } from "expo-image";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Image as NativeImage,
   Modal,
   Pressable,
   ScrollView,
@@ -12,6 +11,7 @@ import {
 } from "react-native";
 
 import type { ExifInfo } from "@/lib/exif-info";
+import { getCropImageInfo } from "@/lib/local-file-bridge";
 import {
   BRAND_MARKS,
   PHOTO_FRAME_STYLES,
@@ -19,7 +19,10 @@ import {
   buildFrameText,
   getBrandMonogram,
   getPhotoFrameLayout,
+  hasFrameInformation,
+  isFilmFrame,
   isPhoneBrand,
+  isRoundedFrame,
   type BrandMarkId,
   type PhotoFrameRequest,
   type PhotoFrameStyle,
@@ -50,21 +53,21 @@ export function PhotoFrameEditor({
     PHOTO_FRAME_THEMES.find((item) => item.id === value.themeId) ??
     PHOTO_FRAME_THEMES[0];
   const text = buildFrameText(file, exif, value);
-  const isInfoStyle = value.style !== "solid";
+  const isInfoStyle = hasFrameInformation(value.style);
+  const isFilmStyle = isFilmFrame(value.style);
+  const isRoundedStyle = isRoundedFrame(value.style);
   const [previewWidth, setPreviewWidth] = useState(0);
   const [sourceSize, setSourceSize] = useState({ width: 4, height: 3 });
 
   useEffect(() => {
     let cancelled = false;
-    NativeImage.getSize(
-      file.uri,
-      (width, height) => {
+    void getCropImageInfo(file.uri)
+      .then(({ width, height }) => {
         if (!cancelled && width > 0 && height > 0) {
           setSourceSize({ width, height });
         }
-      },
-      () => undefined,
-    );
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -144,9 +147,62 @@ export function PhotoFrameEditor({
                   top: frameLayout.imageTop * previewFrame.scale,
                   width: frameLayout.imageWidth * previewFrame.scale,
                   height: frameLayout.imageHeight * previewFrame.scale,
+                  borderRadius: isRoundedStyle
+                    ? Math.max(5, Math.min(14, 12 * previewFrame.scale))
+                    : 0,
                 }}
                 contentFit="contain"
               />
+              {isFilmStyle && (
+                <>
+                  <View
+                    style={[
+                      styles.previewFilmStrip,
+                      {
+                        left: frameLayout.sideInset * previewFrame.scale,
+                        top: frameLayout.sideInset * previewFrame.scale * 0.24,
+                        width: frameLayout.imageWidth * previewFrame.scale,
+                      },
+                    ]}
+                  >
+                    {Array.from({ length: 9 }, (_, index) => (
+                      <View
+                        key={`top-${index}`}
+                        style={styles.previewFilmHole}
+                      />
+                    ))}
+                  </View>
+                  <View
+                    style={[
+                      styles.previewFilmStrip,
+                      {
+                        left: frameLayout.sideInset * previewFrame.scale,
+                        bottom:
+                          frameLayout.sideInset * previewFrame.scale * 0.24,
+                        width: frameLayout.imageWidth * previewFrame.scale,
+                      },
+                    ]}
+                  >
+                    {Array.from({ length: 9 }, (_, index) => (
+                      <View
+                        key={`bottom-${index}`}
+                        style={styles.previewFilmHole}
+                      />
+                    ))}
+                  </View>
+                  <Text
+                    style={[
+                      styles.previewFilmStamp,
+                      {
+                        color: theme.foregroundColor,
+                        left: frameLayout.sideInset * previewFrame.scale,
+                      },
+                    ]}
+                  >
+                    {text.details || "RAW VIEW"}
+                  </Text>
+                </>
+              )}
               {isInfoStyle && (
                 <View
                   style={[
@@ -466,6 +522,27 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   previewBrandMonogram: { fontWeight: "900" },
+  previewFilmStrip: {
+    position: "absolute",
+    height: 4,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  previewFilmHole: {
+    width: 5,
+    height: 3,
+    borderRadius: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.68)",
+  },
+  previewFilmStamp: {
+    position: "absolute",
+    bottom: 5,
+    fontSize: 7,
+    lineHeight: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
   previewTitle: {
     fontSize: 12,
     lineHeight: 16,

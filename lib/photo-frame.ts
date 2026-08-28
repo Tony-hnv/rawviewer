@@ -78,9 +78,15 @@ export async function createFramedLibraryCopy(
   const styleName =
     request.style === "solid"
       ? "留白"
-      : request.style === "exif"
-        ? "参数"
-        : request.brandMark;
+      : request.style === "rounded"
+        ? "圆角"
+        : request.style === "film"
+          ? "胶片"
+          : request.style === "polaroid"
+            ? "拍立得"
+            : request.style === "exif"
+              ? "参数"
+              : request.brandMark;
   const requestedName = `${file.baseName}-边框-${styleName}.${outputExtension}`;
   const fileName = await getAvailableFrameName(requestedName);
   const result = await renderPhotoFrameIntoLibrary(
