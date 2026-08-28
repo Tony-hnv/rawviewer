@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BRAND_MARKS,
   buildFrameText,
   getContainedFrameImageRect,
-  getBrandMonogram,
   getPhotoFrameLayout,
   hasFrameInformation,
   isFilmFrame,
@@ -11,6 +11,10 @@ import {
   isRoundedFrame,
   type PhotoFrameRequest,
 } from "../lib/photo-frame-math";
+import {
+  BRAND_LOGO_RESOURCE_NAMES,
+  getBrandLogoResourceName,
+} from "../lib/brand-logo";
 import type { LibraryFile } from "@/lib/raw-files";
 
 const file: LibraryFile = {
@@ -116,9 +120,15 @@ describe("photo frame metadata", () => {
     expect(text.details).toMatch(/^1970\.01\.01$/);
   });
 
-  it("distinguishes camera and phone brands for visual icon badges", () => {
-    expect(isPhoneBrand("Apple")).toBe(true);
-    expect(isPhoneBrand("Nikon")).toBe(false);
-    expect(getBrandMonogram("Sony")).toBe("S");
+  it("maps every selectable brand to a dedicated offline Logo drawable", () => {
+    expect(Object.keys(BRAND_LOGO_RESOURCE_NAMES)).toEqual(BRAND_MARKS);
+    expect(getBrandLogoResourceName("Sony")).toBe("rawview_logo_sony");
+    expect(getBrandLogoResourceName("Hasselblad")).toBe(
+      "rawview_logo_hasselblad",
+    );
+    expect(getBrandLogoResourceName("OPPO")).toBe("rawview_logo_oppo");
+    expect(new Set(Object.values(BRAND_LOGO_RESOURCE_NAMES)).size).toBe(
+      BRAND_MARKS.length,
+    );
   });
 });

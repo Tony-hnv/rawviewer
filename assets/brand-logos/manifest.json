@@ -1,0 +1,86 @@
+[
+  {
+    "brand": "Sony",
+    "slug": "sony",
+    "file": "sony.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/sony.svg"
+  },
+  {
+    "brand": "Canon",
+    "slug": "canon",
+    "file": "canon.png",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/8/8d/Canon_logo.svg"
+  },
+  {
+    "brand": "Nikon",
+    "slug": "nikon",
+    "file": "nikon.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/nikon.svg"
+  },
+  {
+    "brand": "Fujifilm",
+    "slug": "fujifilm",
+    "file": "fujifilm.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/fujifilm.svg"
+  },
+  {
+    "brand": "Leica",
+    "slug": "leica",
+    "file": "leica.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/leica.svg"
+  },
+  {
+    "brand": "Hasselblad",
+    "slug": "hasselblad",
+    "file": "hasselblad.png",
+    "source": "https://upload.wikimedia.org/wikipedia/commons/6/6b/Hasselblad_Logo.svg"
+  },
+  {
+    "brand": "Panasonic",
+    "slug": "panasonic",
+    "file": "panasonic.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/panasonic.svg"
+  },
+  {
+    "brand": "Apple",
+    "slug": "apple",
+    "file": "apple.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/apple.svg"
+  },
+  {
+    "brand": "Samsung",
+    "slug": "samsung",
+    "file": "samsung.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/samsung.svg"
+  },
+  {
+    "brand": "Google",
+    "slug": "google",
+    "file": "google.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/google.svg"
+  },
+  {
+    "brand": "Huawei",
+    "slug": "huawei",
+    "file": "huawei.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/huawei.svg"
+  },
+  {
+    "brand": "Xiaomi",
+    "slug": "xiaomi",
+    "file": "xiaomi.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/xiaomi.svg"
+  },
+  {
+    "brand": "OPPO",
+    "slug": "oppo",
+    "file": "oppo.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/oppo.svg"
+  },
+  {
+    "brand": "vivo",
+    "slug": "vivo",
+    "file": "vivo.png",
+    "source": "https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/vivo.svg"
+  }
+]

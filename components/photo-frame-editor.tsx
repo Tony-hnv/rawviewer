@@ -17,11 +17,9 @@ import {
   PHOTO_FRAME_STYLES,
   PHOTO_FRAME_THEMES,
   buildFrameText,
-  getBrandMonogram,
   getPhotoFrameLayout,
   hasFrameInformation,
   isFilmFrame,
-  isPhoneBrand,
   isRoundedFrame,
   type BrandMarkId,
   type PhotoFrameRequest,
@@ -29,6 +27,23 @@ import {
   type PhotoFrameThemeId,
 } from "@/lib/photo-frame-math";
 import type { LibraryFile } from "@/lib/raw-files";
+
+const BRAND_LOGO_SOURCES: Record<BrandMarkId, number> = {
+  Sony: require("@/assets/brand-logos/sony.png"),
+  Canon: require("@/assets/brand-logos/canon.png"),
+  Nikon: require("@/assets/brand-logos/nikon.png"),
+  Fujifilm: require("@/assets/brand-logos/fujifilm.png"),
+  Leica: require("@/assets/brand-logos/leica.png"),
+  Hasselblad: require("@/assets/brand-logos/hasselblad.png"),
+  Panasonic: require("@/assets/brand-logos/panasonic.png"),
+  Apple: require("@/assets/brand-logos/apple.png"),
+  Samsung: require("@/assets/brand-logos/samsung.png"),
+  Google: require("@/assets/brand-logos/google.png"),
+  Huawei: require("@/assets/brand-logos/huawei.png"),
+  Xiaomi: require("@/assets/brand-logos/xiaomi.png"),
+  OPPO: require("@/assets/brand-logos/oppo.png"),
+  vivo: require("@/assets/brand-logos/vivo.png"),
+};
 
 export function PhotoFrameEditor({
   visible,
@@ -275,26 +290,19 @@ export function PhotoFrameEditor({
                     },
                   ]}
                 >
-                  <MaterialIcons
-                    name={
-                      isPhoneBrand(value.brandMark)
-                        ? "smartphone"
-                        : "camera-alt"
-                    }
-                    size={Math.max(11, 17 * previewFrame.scale)}
-                    color={theme.foregroundColor}
-                  />
-                  <Text
+                  <Image
+                    source={BRAND_LOGO_SOURCES[value.brandMark]}
+                    contentFit="contain"
+                    tintColor={theme.foregroundColor}
+                    accessibilityLabel={`${value.brandMark} Logo`}
                     style={[
-                      styles.previewBrandMonogram,
+                      styles.previewBrandLogo,
                       {
-                        color: theme.foregroundColor,
-                        fontSize: Math.max(8, 11 * previewFrame.scale),
+                        width: Math.max(36, 68 * previewFrame.scale),
+                        height: Math.max(15, 25 * previewFrame.scale),
                       },
                     ]}
-                  >
-                    {getBrandMonogram(value.brandMark)}
-                  </Text>
+                  />
                 </View>
               )}
             </View>
@@ -390,22 +398,15 @@ export function PhotoFrameEditor({
                         value.brandMark === brand && styles.brandIconActive,
                       ]}
                     >
-                      <MaterialIcons
-                        name={isPhoneBrand(brand) ? "smartphone" : "camera-alt"}
-                        size={13}
-                        color={
-                          value.brandMark === brand ? "#1A1610" : "#AAB4BE"
+                      <Image
+                        source={BRAND_LOGO_SOURCES[brand]}
+                        contentFit="contain"
+                        tintColor={
+                          value.brandMark === brand ? "#1A1610" : "#D5DCE3"
                         }
+                        accessibilityLabel={`${brand} Logo`}
+                        style={styles.brandLogo}
                       />
-                      <Text
-                        style={[
-                          styles.brandMonogram,
-                          value.brandMark === brand &&
-                            styles.brandMonogramActive,
-                        ]}
-                      >
-                        {getBrandMonogram(brand)}
-                      </Text>
                     </View>
                     <Text
                       style={[
@@ -514,14 +515,12 @@ const styles = StyleSheet.create({
   },
   previewBrandBadge: {
     position: "absolute",
-    minWidth: 28,
+    minWidth: 42,
     minHeight: 28,
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    gap: 2,
   },
-  previewBrandMonogram: { fontWeight: "900" },
+  previewBrandLogo: { maxWidth: 74 },
   previewFilmStrip: {
     position: "absolute",
     height: 4,
@@ -629,19 +628,16 @@ const styles = StyleSheet.create({
   },
   brandTextActive: { color: "#F4D298" },
   brandIcon: {
-    width: 22,
+    width: 39,
     height: 22,
-    borderRadius: 11,
+    borderRadius: 7,
     borderWidth: 1,
     borderColor: "#52616E",
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    gap: 1,
   },
   brandIconActive: { backgroundColor: "#F4D298", borderColor: "#F4D298" },
-  brandMonogram: { color: "#AAB4BE", fontSize: 7, fontWeight: "900" },
-  brandMonogramActive: { color: "#1A1610" },
+  brandLogo: { width: 32, height: 15 },
   infoNotice: {
     marginTop: 12,
     minHeight: 36,

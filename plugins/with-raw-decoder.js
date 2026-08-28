@@ -26,6 +26,8 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
 import android.graphics.RectF
 import android.app.Activity
@@ -305,33 +307,51 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
     canvas.drawText(text, x, y, paint)
   }
 
-  private fun drawBrandBadge(
+  private fun drawBrandLogo(
     canvas: Canvas,
     brandMark: String,
     left: Float,
     top: Float,
-    size: Float,
+    width: Float,
+    height: Float,
     foreground: Int,
   ) {
     if (brandMark.isBlank()) return
-    val isPhone = brandMark in setOf("Apple", "Samsung", "Google", "Huawei", "Xiaomi", "OPPO", "vivo")
-    val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = foreground
-      style = Paint.Style.STROKE
-      strokeWidth = max(2f, size * 0.045f)
+    val resourceName = when (brandMark) {
+      "Sony" -> "rawview_logo_sony"
+      "Canon" -> "rawview_logo_canon"
+      "Nikon" -> "rawview_logo_nikon"
+      "Fujifilm" -> "rawview_logo_fujifilm"
+      "Leica" -> "rawview_logo_leica"
+      "Hasselblad" -> "rawview_logo_hasselblad"
+      "Panasonic" -> "rawview_logo_panasonic"
+      "Apple" -> "rawview_logo_apple"
+      "Samsung" -> "rawview_logo_samsung"
+      "Google" -> "rawview_logo_google"
+      "Huawei" -> "rawview_logo_huawei"
+      "Xiaomi" -> "rawview_logo_xiaomi"
+      "OPPO" -> "rawview_logo_oppo"
+      "vivo" -> "rawview_logo_vivo"
+      else -> return
     }
-    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      color = foreground
-      style = Paint.Style.FILL
-    }
-    if (isPhone) {
-      canvas.drawRoundRect(left, top, left + size * 0.58f, top + size, size * 0.1f, size * 0.1f, stroke)
-      canvas.drawCircle(left + size * 0.29f, top + size * 0.84f, max(1.5f, size * 0.025f), fill)
-    } else {
-      val bodyTop = top + size * 0.27f
-      canvas.drawRoundRect(left, bodyTop, left + size, top + size * 0.84f, size * 0.1f, size * 0.1f, stroke)
-      canvas.drawCircle(left + size * 0.5f, top + size * 0.55f, size * 0.18f, stroke)
-      canvas.drawRect(left + size * 0.12f, top + size * 0.15f, left + size * 0.37f, bodyTop, stroke)
+    val resourceId = appContext.resources.getIdentifier(resourceName, "drawable", appContext.packageName)
+    if (resourceId == 0) return
+    val logo = BitmapFactory.decodeResource(appContext.resources, resourceId) ?: return
+    try {
+      val scale = min(width / logo.width.toFloat(), height / logo.height.toFloat())
+      val drawWidth = logo.width * scale
+      val drawHeight = logo.height * scale
+      val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        colorFilter = PorterDuffColorFilter(foreground, PorterDuff.Mode.SRC_IN)
+      }
+      canvas.drawBitmap(
+        logo,
+        null,
+        RectF(left + (width - drawWidth) / 2f, top + (height - drawHeight) / 2f, left + (width + drawWidth) / 2f, top + (height + drawHeight) / 2f),
+        paint,
+      )
+    } finally {
+      logo.recycle()
     }
   }
 
@@ -459,14 +479,19 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
         drawFrameText(canvas, title, textX, titleY, titleSize, foreground, bold = true)
         drawFrameText(canvas, subtitle, textX, subtitleY, subtitleSize, foreground)
         drawFrameText(canvas, details, textX, detailY, detailSize, foreground, bold = true)
-        drawBrandBadge(
-          canvas,
-          brandMark,
-          outputWidth - sideInset - min(bottomInset * 0.55f, 72f),
-          captionTop + bottomInset * 0.18f,
-          min(bottomInset * 0.55f, 72f),
-          foreground,
-        )
+        if (style == "brand") {
+          val logoWidth = min(bottomInset * 0.92f, 180f)
+          val logoHeight = min(bottomInset * 0.42f, 58f)
+          drawBrandLogo(
+            canvas,
+            brandMark,
+            outputWidth - sideInset - logoWidth,
+            captionTop + (bottomInset - logoHeight) / 2f,
+            logoWidth,
+            logoHeight,
+            foreground,
+          )
+        }
       }
 
       val destinationFile = File(requireNotNull(Uri.parse(destinationUri).path) { "Destination path is unavailable." })
@@ -955,7 +980,37 @@ function withRawDecoder(config) {
         "rawview",
         "rawdecoder",
       );
+      const logoSourceDirectory = path.join(
+        modConfig.modRequest.projectRoot,
+        "assets",
+        "brand-logos",
+      );
+      const drawableDirectory = path.join(
+        modConfig.modRequest.platformProjectRoot,
+        "app",
+        "src",
+        "main",
+        "res",
+        "drawable-nodpi",
+      );
+      const brandLogoFiles = [
+        "sony",
+        "canon",
+        "nikon",
+        "fujifilm",
+        "leica",
+        "hasselblad",
+        "panasonic",
+        "apple",
+        "samsung",
+        "google",
+        "huawei",
+        "xiaomi",
+        "oppo",
+        "vivo",
+      ];
       await fs.promises.mkdir(sourceDirectory, { recursive: true });
+      await fs.promises.mkdir(drawableDirectory, { recursive: true });
       await Promise.all([
         fs.promises.writeFile(
           path.join(sourceDirectory, "RawDecoderModule.kt"),
@@ -964,6 +1019,12 @@ function withRawDecoder(config) {
         fs.promises.writeFile(
           path.join(sourceDirectory, "RawDecoderPackage.kt"),
           rawDecoderPackage,
+        ),
+        ...brandLogoFiles.map((logoFile) =>
+          fs.promises.copyFile(
+            path.join(logoSourceDirectory, `${logoFile}.png`),
+            path.join(drawableDirectory, `rawview_logo_${logoFile}.png`),
+          ),
         ),
       ]);
       return modConfig;
@@ -976,5 +1037,5 @@ function withRawDecoder(config) {
 module.exports = createRunOncePlugin(
   withRawDecoder,
   "rawview-libraw-decoder",
-  "1.0.7",
+  "1.0.8",
 );
