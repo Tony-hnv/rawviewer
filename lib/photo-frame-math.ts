@@ -112,6 +112,67 @@ export function getBrandMonogram(brand: BrandMarkId): string {
   return brand.slice(0, 1).toUpperCase();
 }
 
+export type PhotoFrameLayout = {
+  sideInset: number;
+  bottomInset: number;
+  outputWidth: number;
+  outputHeight: number;
+  imageLeft: number;
+  imageTop: number;
+  imageWidth: number;
+  imageHeight: number;
+  informationTop: number;
+  informationHeight: number;
+};
+
+/**
+ * Calculates the physical frame layout used by both the preview and Android renderer.
+ * The source bitmap is drawn at its decoded size. Therefore left, right and top
+ * margins are exactly the same `sideInset`; the information area is extra height
+ * below the image and never participates in image scaling.
+ */
+export function getPhotoFrameLayout(
+  sourceWidth: number,
+  sourceHeight: number,
+  style: PhotoFrameStyle,
+): PhotoFrameLayout {
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return {
+      sideInset: 0,
+      bottomInset: 0,
+      outputWidth: 0,
+      outputHeight: 0,
+      imageLeft: 0,
+      imageTop: 0,
+      imageWidth: 0,
+      imageHeight: 0,
+      informationTop: 0,
+      informationHeight: 0,
+    };
+  }
+
+  const shortSide = Math.min(sourceWidth, sourceHeight);
+  const sideInset = Math.max(28, Math.round(shortSide * 0.052));
+  const hasInformation = style === "exif" || style === "brand";
+  const bottomInset = hasInformation
+    ? Math.max(sideInset * 3, Math.round(shortSide * 0.17))
+    : sideInset;
+  const informationTop = sideInset + sourceHeight;
+
+  return {
+    sideInset,
+    bottomInset,
+    outputWidth: sourceWidth + sideInset * 2,
+    outputHeight: sourceHeight + sideInset + bottomInset,
+    imageLeft: sideInset,
+    imageTop: sideInset,
+    imageWidth: sourceWidth,
+    imageHeight: sourceHeight,
+    informationTop,
+    informationHeight: bottomInset,
+  };
+}
+
 export function getContainedFrameImageRect(
   sourceWidth: number,
   sourceHeight: number,

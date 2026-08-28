@@ -1,6 +1,8 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { Image } from "expo-image";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Image as NativeImage,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +18,7 @@ import {
   PHOTO_FRAME_THEMES,
   buildFrameText,
   getBrandMonogram,
+  getPhotoFrameLayout,
   isPhoneBrand,
   type BrandMarkId,
   type PhotoFrameRequest,
@@ -48,6 +51,46 @@ export function PhotoFrameEditor({
     PHOTO_FRAME_THEMES[0];
   const text = buildFrameText(file, exif, value);
   const isInfoStyle = value.style !== "solid";
+  const [previewWidth, setPreviewWidth] = useState(0);
+  const [sourceSize, setSourceSize] = useState({ width: 4, height: 3 });
+
+  useEffect(() => {
+    let cancelled = false;
+    NativeImage.getSize(
+      file.uri,
+      (width, height) => {
+        if (!cancelled && width > 0 && height > 0) {
+          setSourceSize({ width, height });
+        }
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [file.uri]);
+
+  const frameLayout = useMemo(
+    () => getPhotoFrameLayout(sourceSize.width, sourceSize.height, value.style),
+    [sourceSize.height, sourceSize.width, value.style],
+  );
+  const previewFrame = useMemo(() => {
+    const availableWidth = Math.max(previewWidth - 26, 280);
+    const availableHeight = 224;
+    const scale =
+      frameLayout.outputWidth > 0 && frameLayout.outputHeight > 0
+        ? Math.min(
+            1,
+            availableWidth / frameLayout.outputWidth,
+            availableHeight / frameLayout.outputHeight,
+          )
+        : 1;
+    return {
+      scale,
+      width: frameLayout.outputWidth * scale,
+      height: frameLayout.outputHeight * scale,
+    };
+  }, [frameLayout, previewWidth]);
 
   const setStyle = (style: PhotoFrameStyle) => onChange({ ...value, style });
   const setTheme = (themeId: PhotoFrameThemeId) =>
@@ -78,44 +121,127 @@ export function PhotoFrameEditor({
           </View>
 
           <View
-            style={[styles.preview, { backgroundColor: theme.backgroundColor }]}
+            style={styles.preview}
+            onLayout={(event) =>
+              setPreviewWidth(event.nativeEvent.layout.width)
+            }
           >
-            <Image
-              source={{ uri: file.uri }}
-              style={styles.previewImage}
-              contentFit="contain"
-            />
-            {isInfoStyle && (
-              <View style={styles.previewInfo}>
-                <Text
+            <View
+              style={[
+                styles.previewFrame,
+                {
+                  width: previewFrame.width,
+                  height: previewFrame.height,
+                  backgroundColor: theme.backgroundColor,
+                },
+              ]}
+            >
+              <Image
+                source={{ uri: file.uri }}
+                style={{
+                  position: "absolute",
+                  left: frameLayout.imageLeft * previewFrame.scale,
+                  top: frameLayout.imageTop * previewFrame.scale,
+                  width: frameLayout.imageWidth * previewFrame.scale,
+                  height: frameLayout.imageHeight * previewFrame.scale,
+                }}
+                contentFit="contain"
+              />
+              {isInfoStyle && (
+                <View
                   style={[
-                    styles.previewTitle,
-                    { color: theme.foregroundColor },
+                    styles.previewInfo,
+                    {
+                      left: frameLayout.sideInset * previewFrame.scale,
+                      top: frameLayout.informationTop * previewFrame.scale,
+                      width: frameLayout.imageWidth * previewFrame.scale,
+                      height:
+                        frameLayout.informationHeight * previewFrame.scale,
+                      paddingTop:
+                        frameLayout.informationHeight *
+                        previewFrame.scale *
+                        0.17,
+                    },
                   ]}
-                  numberOfLines={1}
                 >
-                  {text.title}
-                </Text>
-                <Text
+                  <Text
+                    style={[
+                      styles.previewTitle,
+                      {
+                        color: theme.foregroundColor,
+                        fontSize: Math.max(9, 12 * previewFrame.scale),
+                        lineHeight: Math.max(11, 16 * previewFrame.scale),
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {text.title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.previewSubtitle,
+                      {
+                        color: theme.foregroundColor,
+                        fontSize: Math.max(7, 9 * previewFrame.scale),
+                        lineHeight: Math.max(9, 13 * previewFrame.scale),
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {text.subtitle}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.previewDetail,
+                      {
+                        color: theme.foregroundColor,
+                        fontSize: Math.max(7, 9 * previewFrame.scale),
+                        lineHeight: Math.max(9, 13 * previewFrame.scale),
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {text.details || "本地图片副本"}
+                  </Text>
+                </View>
+              )}
+              {value.style === "brand" && (
+                <View
                   style={[
-                    styles.previewSubtitle,
-                    { color: theme.foregroundColor },
+                    styles.previewBrandBadge,
+                    {
+                      right: frameLayout.sideInset * previewFrame.scale,
+                      top:
+                        frameLayout.informationTop * previewFrame.scale +
+                        frameLayout.informationHeight *
+                          previewFrame.scale *
+                          0.2,
+                    },
                   ]}
-                  numberOfLines={1}
                 >
-                  {text.subtitle}
-                </Text>
-                <Text
-                  style={[
-                    styles.previewDetail,
-                    { color: theme.foregroundColor },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {text.details || "本地图片副本"}
-                </Text>
-              </View>
-            )}
+                  <MaterialIcons
+                    name={
+                      isPhoneBrand(value.brandMark)
+                        ? "smartphone"
+                        : "camera-alt"
+                    }
+                    size={Math.max(11, 17 * previewFrame.scale)}
+                    color={theme.foregroundColor}
+                  />
+                  <Text
+                    style={[
+                      styles.previewBrandMonogram,
+                      {
+                        color: theme.foregroundColor,
+                        fontSize: Math.max(8, 11 * previewFrame.scale),
+                      },
+                    ]}
+                  >
+                    {getBrandMonogram(value.brandMark)}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
 
           <Text style={styles.sectionLabel}>边框样式</Text>
@@ -317,13 +443,29 @@ const styles = StyleSheet.create({
   },
   preview: {
     marginTop: 16,
-    height: 220,
+    height: 250,
     borderRadius: 16,
-    padding: 13,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#121A21",
+  },
+  previewFrame: { position: "relative", overflow: "hidden" },
+  previewInfo: {
+    position: "absolute",
+    justifyContent: "center",
     overflow: "hidden",
   },
-  previewImage: { flex: 1, width: "100%" },
-  previewInfo: { marginTop: 9, minHeight: 47, justifyContent: "center" },
+  previewBrandBadge: {
+    position: "absolute",
+    minWidth: 28,
+    minHeight: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 2,
+  },
+  previewBrandMonogram: { fontWeight: "900" },
   previewTitle: {
     fontSize: 12,
     lineHeight: 16,

@@ -4,6 +4,7 @@ import {
   buildFrameText,
   getContainedFrameImageRect,
   getBrandMonogram,
+  getPhotoFrameLayout,
   isPhoneBrand,
   type PhotoFrameRequest,
 } from "../lib/photo-frame-math";
@@ -69,6 +70,28 @@ describe("photo frame metadata", () => {
       height: 250,
     });
     expect(rect.width / rect.height).toBeCloseTo(400 / 300);
+  });
+
+  it("keeps the physical frame margins equal around the source image", () => {
+    const layout = getPhotoFrameLayout(1600, 1000, "exif");
+    expect(layout.imageLeft).toBe(layout.sideInset);
+    expect(layout.imageTop).toBe(layout.sideInset);
+    expect(layout.outputWidth - layout.imageLeft - layout.imageWidth).toBe(
+      layout.sideInset,
+    );
+    expect(layout.informationTop).toBe(layout.imageTop + layout.imageHeight);
+    expect(layout.informationHeight).toBeGreaterThan(layout.sideInset);
+    expect(layout.outputHeight).toBe(
+      layout.imageHeight + layout.sideInset + layout.informationHeight,
+    );
+  });
+
+  it("uses an equal four-sided margin for a solid frame", () => {
+    const layout = getPhotoFrameLayout(1200, 800, "solid");
+    expect(layout.bottomInset).toBe(layout.sideInset);
+    expect(layout.outputHeight - layout.imageTop - layout.imageHeight).toBe(
+      layout.sideInset,
+    );
   });
 
   it("distinguishes camera and phone brands for visual icon badges", () => {

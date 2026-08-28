@@ -366,17 +366,20 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
       val background = frameColor(backgroundColor, Color.WHITE)
       val foreground = frameColor(foregroundColor, Color.BLACK)
       canvas.drawColor(background)
-      val contentWidth = outputWidth - sideInset * 2
-      val contentHeight = outputHeight - sideInset - bottomInset
-      val scale = min(contentWidth.toFloat() / upright.width, contentHeight.toFloat() / upright.height)
-      val drawWidth = (upright.width * scale).roundToInt()
-      val drawHeight = (upright.height * scale).roundToInt()
-      val drawLeft = sideInset + (contentWidth - drawWidth) / 2
-      val drawTop = sideInset + (contentHeight - drawHeight) / 2
+      // The canvas is sized from the decoded upright bitmap. Draw it at its
+      // native size, so the left, right and top margins are exactly sideInset.
+      // The information panel is extra height below the image and never
+      // participates in image scaling or containment.
+      val drawLeft = sideInset
+      val drawTop = sideInset
+      val drawWidth = upright.width
+      val drawHeight = upright.height
+      check(drawLeft + drawWidth + sideInset == outputWidth) { "FRAME_LAYOUT_FAILED: Horizontal frame margins are not equal." }
+      check(drawTop == sideInset) { "FRAME_LAYOUT_FAILED: Top frame margin is invalid." }
       canvas.drawBitmap(
         upright,
-        null,
-        Rect(drawLeft, drawTop, drawLeft + drawWidth, drawTop + drawHeight),
+        drawLeft.toFloat(),
+        drawTop.toFloat(),
         Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
       )
 
