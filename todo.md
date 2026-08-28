@@ -90,3 +90,4 @@
 - [x] 验证新模板预览、等宽边框几何与 Android 本地副本导出
 - [ ] 在真实 Android 发布构建中验收圆角、胶片和拍立得模板
 - [x] 将 RAW View 1.1.6 圆角、胶片和拍立得边框模板同步至 GitHub main 分支
+- [x] 触发并核验 RAW View v1.1.6 签名 APK CI 与公开 Release
