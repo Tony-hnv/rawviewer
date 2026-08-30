@@ -120,3 +120,7 @@
 - [x] 增加 AI 修图操作界面、加载/失败反馈和原图保护提示
 - [x] 为旋转和 AI 图像处理补充单元测试、类型检查与原生/配置验证
 - [ ] 在真实 Android 设备验收旋转、API 请求、AI 结果落盘和原图不变
+
+- [ ] 将 RAW View 1.3.0 图片旋转与 AI 修图改动同步至 GitHub main
+- [ ] 触发并监控 RAW View 1.3.0 Android 签名 Release CI
+- [ ] 核验新的签名 APK、SHA-256 与 GitHub Release 资产
