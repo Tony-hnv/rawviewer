@@ -525,6 +525,58 @@ class RawDecoderModule(private val appContext: ReactApplicationContext) : ReactC
     }
   }
 
+  @ReactMethod
+  fun rotateImage(
+    localUri: String,
+    degrees: Double,
+    destinationUri: String,
+    format: String,
+    promise: Promise,
+  ) {
+    var sourceBitmap: Bitmap? = null
+    var rotatedBitmap: Bitmap? = null
+    try {
+      val normalizedDegrees = when {
+        degrees % 360.0 == 90.0 -> 90
+        degrees % 360.0 == 180.0 -> 180
+        degrees % 360.0 == 270.0 -> 270
+        else -> throw IllegalArgumentException("ROTATE_INVALID_DEGREES: Rotation must be 90, 180, or 270 degrees clockwise.")
+      }
+      val sourceFile = File(requireNotNull(Uri.parse(localUri).path) { "Local file path is unavailable." })
+      check(sourceFile.exists()) { "ROTATE_SOURCE_MISSING: Import the file again before rotating." }
+      val source = decodeUprightBitmap(sourceFile)
+      sourceBitmap = source
+      val matrix = Matrix().apply { postRotate(normalizedDegrees.toFloat()) }
+      val outputBitmap = Bitmap.createBitmap(
+        source,
+        0,
+        0,
+        source.width,
+        source.height,
+        matrix,
+        true,
+      )
+      rotatedBitmap = outputBitmap
+      val destinationFile = File(requireNotNull(Uri.parse(destinationUri).path) { "Destination path is unavailable." })
+      destinationFile.parentFile?.mkdirs()
+      val compressFormat = if (format == "png") Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG
+      destinationFile.outputStream().use { outputStream ->
+        check(outputBitmap.compress(compressFormat, 100, outputStream)) { "ROTATE_WRITE_FAILED: Android could not encode the rotated image." }
+      }
+      check(destinationFile.exists() && destinationFile.length() > 0L) { "ROTATE_WRITE_FAILED: Rotated local copy is empty." }
+      promise.resolve(Arguments.createMap().apply {
+        putString("uri", "file://" + destinationFile.absolutePath)
+        putInt("width", outputBitmap.width)
+        putInt("height", outputBitmap.height)
+      })
+    } catch (error: Exception) {
+      promise.reject("ROTATE_FAILED", error.message ?: "Unable to create the rotated local copy.", error)
+    } finally {
+      rotatedBitmap?.recycle()
+      sourceBitmap?.recycle()
+    }
+  }
+
   private fun isRawFile(file: File): Boolean = file.extension.lowercase() in setOf("arw", "cr2", "cr3", "nef", "rw2")
 
   private fun rawMetadataValue(metadata: Metadata, vararg tagNames: String): String? {

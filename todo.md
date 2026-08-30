@@ -113,3 +113,10 @@
 - [x] 将 RAW View 1.2.0 自由裁切、Logo 调节和 UI 改动同步至 GitHub main
 - [x] 触发并监控 RAW View 1.2.0 Android 签名 Release CI
 - [x] 核验新的签名 APK、SHA-256 与 GitHub Release 资产
+
+- [x] 增加图片顺时针/逆时针旋转并安全保存为应用私有新副本
+- [x] 增加 OpenAI-compatible API 地址、模型和密钥配置，密钥使用安全存储
+- [x] 增加 AI 图片编辑/修改请求、结果下载与新副本入库流程
+- [x] 增加 AI 修图操作界面、加载/失败反馈和原图保护提示
+- [x] 为旋转和 AI 图像处理补充单元测试、类型检查与原生/配置验证
+- [ ] 在真实 Android 设备验收旋转、API 请求、AI 结果落盘和原图不变

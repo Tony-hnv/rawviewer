@@ -30,6 +30,7 @@ import Animated, {
 
 import { ScreenContainer } from "@/components/screen-container";
 import { ManualCropper } from "@/components/manual-cropper";
+import { AiImageEditor } from "@/components/ai-image-editor";
 import { PhotoFrameEditor } from "@/components/photo-frame-editor";
 import { ZoomableImage } from "@/components/zoomable-image";
 import { type CropRect } from "@/lib/crop-math";
@@ -46,6 +47,10 @@ import {
   type CropAspectRatio,
 } from "@/lib/photo-crop";
 import { createFramedLibraryCopy } from "@/lib/photo-frame";
+import {
+  createRotatedLibraryCopy,
+  type RotationDegrees,
+} from "@/lib/photo-rotate";
 import type { PhotoFrameRequest } from "@/lib/photo-frame-math";
 import {
   exportLibraryFile,
@@ -97,6 +102,8 @@ export default function DetailScreen() {
   const [isCropping, setIsCropping] = useState(false);
   const [isFrameVisible, setIsFrameVisible] = useState(false);
   const [isFraming, setIsFraming] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
+  const [isAiVisible, setIsAiVisible] = useState(false);
   const [frameRequest, setFrameRequest] = useState<PhotoFrameRequest>({
     style: "solid",
     themeId: "white",
@@ -299,6 +306,58 @@ export default function DetailScreen() {
       setIsCropping(false);
     }
   }, [cropError, cropRatio, cropSelection, file, router]);
+
+  const rotateFile = useCallback(
+    async (degrees: RotationDegrees) => {
+      if (!file) return;
+      if (file.kind !== "image") {
+        Alert.alert(
+          "暂不支持 RAW 旋转",
+          "为保护原始 RAW 数据，旋转仅支持 PNG、JPG 和 JPEG 图片。本文件仍可正常预览和导出。",
+        );
+        return;
+      }
+      setIsRotating(true);
+      try {
+        const rotatedFile = await createRotatedLibraryCopy(file, degrees);
+        setNotice(
+          `已创建左/右旋转 ${degrees === 270 ? "90" : degrees}° 新副本`,
+        );
+        hapticSuccess();
+        router.push({ pathname: "/detail", params: { id: rotatedFile.id } });
+      } catch (error) {
+        Alert.alert(
+          "旋转未完成",
+          error instanceof Error ? error.message : "无法保存旋转副本。请重试。",
+        );
+      } finally {
+        setIsRotating(false);
+      }
+    },
+    [file, router],
+  );
+
+  const openAiEditor = useCallback(() => {
+    if (!file) return;
+    if (file.kind !== "image") {
+      Alert.alert(
+        "暂不支持 RAW AI 修图",
+        "AI 修图当前仅支持 PNG、JPG 和 JPEG 图片。RAW 文件保持只读，请先导出或使用普通图片副本。",
+      );
+      return;
+    }
+    setIsAiVisible(true);
+  }, [file]);
+
+  const handleAiComplete = useCallback(
+    (editedFile: LibraryFile) => {
+      setIsAiVisible(false);
+      setNotice("已创建 AI 修图本地副本");
+      hapticSuccess();
+      router.push({ pathname: "/detail", params: { id: editedFile.id } });
+    },
+    [router],
+  );
 
   const openPhotoFrame = useCallback(() => {
     if (!file) return;
@@ -583,6 +642,48 @@ export default function DetailScreen() {
                 <Text style={styles.renameButtonText}>重命名</Text>
               </Pressable>
             </View>
+            <View style={styles.editActions}>
+              <Pressable
+                onPress={() => void rotateFile(270)}
+                disabled={!isImage || isRotating}
+                style={({ pressed }) => [
+                  styles.editActionButton,
+                  (!isImage || isRotating) && styles.confirmDisabled,
+                  pressed && styles.renameButtonPressed,
+                ]}
+              >
+                {isRotating ? (
+                  <ActivityIndicator size="small" color="#C5E5FA" />
+                ) : (
+                  <MaterialIcons name="rotate-left" size={18} color="#C5E5FA" />
+                )}
+                <Text style={styles.editActionText}>左转</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void rotateFile(90)}
+                disabled={!isImage || isRotating}
+                style={({ pressed }) => [
+                  styles.editActionButton,
+                  (!isImage || isRotating) && styles.confirmDisabled,
+                  pressed && styles.renameButtonPressed,
+                ]}
+              >
+                <MaterialIcons name="rotate-right" size={18} color="#C5E5FA" />
+                <Text style={styles.editActionText}>右转</Text>
+              </Pressable>
+              <Pressable
+                onPress={openAiEditor}
+                disabled={!isImage || isRotating}
+                style={({ pressed }) => [
+                  styles.aiActionButton,
+                  (!isImage || isRotating) && styles.confirmDisabled,
+                  pressed && styles.renameButtonPressed,
+                ]}
+              >
+                <MaterialIcons name="auto-awesome" size={18} color="#F4D298" />
+                <Text style={styles.aiActionText}>AI 修图</Text>
+              </Pressable>
+            </View>
             <Pressable
               onPress={openExif}
               style={({ pressed }) => [
@@ -602,7 +703,7 @@ export default function DetailScreen() {
               ]}
             >
               <MaterialIcons name="crop" size={18} color="#D7C6F7" />
-              <Text style={styles.cropButtonText}>手动比例裁切</Text>
+              <Text style={styles.cropButtonText}>手动裁切</Text>
               <Text style={styles.cropHint}>
                 {isImage ? "保存新副本" : "仅图片"}
               </Text>
@@ -962,6 +1063,16 @@ export default function DetailScreen() {
             onClose={() => !isFraming && setIsFrameVisible(false)}
             onSave={() => void confirmPhotoFrame()}
           />
+          <AiImageEditor
+            visible={isAiVisible}
+            file={file}
+            onClose={() => !isRotating && setIsAiVisible(false)}
+            onConfigure={() => {
+              setIsAiVisible(false);
+              router.push("/ai-settings");
+            }}
+            onComplete={handleAiComplete}
+          />
         </ScreenContainer>
       </Animated.View>
     </GestureDetector>
@@ -1112,6 +1223,33 @@ const styles = StyleSheet.create({
   },
   hintText: { color: "#7E8B95", fontSize: 11, lineHeight: 16 },
   fileActions: { marginTop: 15, flexDirection: "row", gap: 10 },
+  editActions: { marginTop: 10, flexDirection: "row", gap: 8 },
+  editActionButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#315069",
+    backgroundColor: "#172633",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  editActionText: { color: "#C5E5FA", fontSize: 12, fontWeight: "900" },
+  aiActionButton: {
+    flex: 1.25,
+    minHeight: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#71582F",
+    backgroundColor: "#382D20",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  aiActionText: { color: "#F4D298", fontSize: 12, fontWeight: "900" },
   renameButton: {
     height: 50,
     flex: 1.25,

@@ -36,6 +36,12 @@ interface RawDecoderNativeModule {
     destinationUri: string,
     format: "png" | "jpeg",
   ): Promise<CropImageResult>;
+  rotateImage(
+    localUri: string,
+    degrees: 90 | 180 | 270,
+    destinationUri: string,
+    format: "png" | "jpeg",
+  ): Promise<RotatedImageResult>;
   createPhotoFrame(
     localUri: string,
     destinationUri: string,
@@ -61,6 +67,12 @@ export interface CropImageInfo {
 }
 
 export interface CropImageResult {
+  uri: string;
+  width: number;
+  height: number;
+}
+
+export interface RotatedImageResult {
   uri: string;
   width: number;
   height: number;
@@ -142,6 +154,19 @@ export async function cropImageIntoLibrary(
 }
 
 /** 将带有边框的标准图片直接写入 Android 应用私有图库目录。 */
+/** 将直立后的普通图片按 90 度倍数旋转并直接写入 Android 应用私有图库目录。 */
+export async function rotateImageIntoLibrary(
+  localUri: string,
+  degrees: 90 | 180 | 270,
+  destinationUri: string,
+  format: "png" | "jpeg",
+): Promise<RotatedImageResult> {
+  if (Platform.OS !== "android") {
+    throw new Error("本地图片旋转仅在 Android 原生构建中可用。");
+  }
+  return nativeModule().rotateImage(localUri, degrees, destinationUri, format);
+}
+
 export async function renderPhotoFrameIntoLibrary(
   localUri: string,
   destinationUri: string,
